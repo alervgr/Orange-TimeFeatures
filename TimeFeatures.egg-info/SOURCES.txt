@@ -1,0 +1,12 @@
+setup.py
+TimeFeatures.egg-info/PKG-INFO
+TimeFeatures.egg-info/SOURCES.txt
+TimeFeatures.egg-info/dependency_links.txt
+TimeFeatures.egg-info/entry_points.txt
+TimeFeatures.egg-info/top_level.txt
+timefeatures/__init__.py
+timefeatures/widgets/OWSaveDataDB.py
+timefeatures/widgets/OWTFGraphGenerator.py
+timefeatures/widgets/OWTimeFeatureConstructor.py
+timefeatures/widgets/__init__.py
+timefeatures/widgets/icons/timefeature.svg
