@@ -510,7 +510,7 @@ class FeatureConstructorHandler(DomainContextHandler):
 
 class OWFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
     name = "Time Feature Constructor"
-    description = "Construct new features (data columns) from a set of " \
+    description = "Construct new time features (data columns) from a set of " \
                   "existing features in the input dataset."
     icon = "icons/timefeature.svg"
     keywords = "time feature constructor, function, lambda"
