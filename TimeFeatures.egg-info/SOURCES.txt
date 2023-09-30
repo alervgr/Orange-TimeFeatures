@@ -9,4 +9,6 @@ timefeatures/widgets/OWSaveDataDB.py
 timefeatures/widgets/OWTFGraphGenerator.py
 timefeatures/widgets/OWTimeFeatureConstructor.py
 timefeatures/widgets/__init__.py
+timefeatures/widgets/icons/graphgenerator.svg
+timefeatures/widgets/icons/savedatadb.svg
 timefeatures/widgets/icons/timefeature.svg

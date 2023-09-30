@@ -51,7 +51,6 @@ from Orange.widgets.utils.widgetpreview import WidgetPreview
 from Orange.widgets.widget import OWWidget, Msg, Input, Output
 from Orange.widgets.utils.concurrent import ConcurrentWidgetMixin, TaskState
 
-
 FeatureDescriptor = \
     namedtuple("FeatureDescriptor", ["name", "expression", "meta"],
                defaults=[False])
@@ -117,6 +116,35 @@ def selected_row(view):
         return None
 
 
+def shift_rows(table, n):  # FUNCIÓN SHIFT()
+
+    if n == 0:  # Si n = 0 la tabla quedara igual que la de entrada ya que se mantendrán los valores.
+        return table
+
+    num_rows = len(table)
+    new_table = Orange.data.Table(table.domain)  # Creación de tabla con el mismo tamaño que la tabla de entrada.
+
+    for i in range(num_rows):  # Obtendrá los valores de cada fila dependiendo de N.
+        shifted_instance = shift(table, i, n)
+        if shifted_instance is not None:  # Comprueba que no sea nulo.
+            new_table.append(shifted_instance)  # Lo añade a la nueva tabla.
+
+    return new_table
+
+
+def shift(table, row_index, n):  # Obtiene el valor de la variable dependiendo del valor de N.
+
+    num_rows = len(table)
+    new_index = row_index + n
+
+    if 0 <= new_index < num_rows:  # Comprueba
+        new_instance = table[new_index]
+        if "?" not in new_instance:  # Comprueba si no es nulo
+            return new_instance
+
+    return None
+
+
 class FeatureEditor(QFrame):
     ExpressionTooltip = """
 Use variable names as values in expression.
@@ -130,6 +158,9 @@ Categorical features are passed as strings
                            [(key, val) for key, val in builtins.__dict__.items()
                             if key in {"str", "float", "int", "len",
                                        "abs", "max", "min"}]))
+
+    TIME_FUNCTIONS = {"shift": shift_rows}
+
     featureChanged = Signal()
     featureEdited = Signal()
 
@@ -174,11 +205,21 @@ Categorical features are passed as strings
             sizePolicy=QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
         self.functionscb.setModel(self.funcs_model)
 
+        # ComboBox FUNCIONES TEMPORALES
+        self.time_func_model = itemmodels.PyListModelTooltip(chain(["Select a Time Function"], self.TIME_FUNCTIONS))
+        self.time_func_model.setParent(self)
+        self.timefunctioncb = ComboBoxSearch(
+            minimumContentsLength=16,
+            sizeAdjustPolicy=QComboBox.AdjustToMinimumContentsLengthWithIcon,
+            sizePolicy=QSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum))
+        self.timefunctioncb.setModel(self.time_func_model)
+
         layout.addWidget(self.nameedit, 0, 0)
         layout.addWidget(self.metaattributecb, 1, 0)
         layout.addWidget(self.expressionedit, 0, 1, 1, 2)
         layout.addWidget(self.attributescb, 1, 1)
         layout.addWidget(self.functionscb, 1, 2)
+        layout.addWidget(self.timefunctioncb, 1, 3)
         layout.addWidget(QWidget(), 2, 0)
 
         self.setLayout(layout)
@@ -188,6 +229,7 @@ Categorical features are passed as strings
         self.expressionedit.textChanged.connect(self._invalidate)
         self.attributescb.currentIndexChanged.connect(self.on_attrs_changed)
         self.functionscb.currentIndexChanged.connect(self.on_funcs_changed)
+        self.timefunctioncb.currentIndexChanged.connect(self.on_time_funcs_changed)  # El comboBox ha cambiado.
 
         self._modified = False
 
@@ -249,6 +291,14 @@ Categorical features are passed as strings
                 self.expressionedit.cursorBackward(False)
             self.functionscb.setCurrentIndex(0)
 
+    def on_time_funcs_changed(self):
+        index = self.timefunctioncb.currentIndex()
+        if index > 0:
+            func = self.time_func_model[index]
+            self.insert_into_expression(func + "(,)")
+            self.expressionedit.cursorBackward(False, 2)
+            self.timefunctioncb.setCurrentIndex(0)
+
     def insert_into_expression(self, what):
         cp = self.expressionedit.cursorPosition()
         ct = self.expressionedit.text()
@@ -272,9 +322,9 @@ class ContinuousFeatureEditor(FeatureEditor):
 
 class DateTimeFeatureEditor(FeatureEditor):
     ExpressionTooltip = FeatureEditor.ExpressionTooltip + \
-        "Result must be a string in ISO-8601 format " \
-        "(e.g. 2019-07-30T15:37:27 or a part thereof),\n" \
-        "or a number of seconds since Jan 1, 1970."
+                        "Result must be a string in ISO-8601 format " \
+                        "(e.g. 2019-07-30T15:37:27 or a part thereof),\n" \
+                        "or a number of seconds since Jan 1, 1970."
 
     def editorData(self):
         return DateTimeDescriptor(
@@ -286,8 +336,8 @@ class DateTimeFeatureEditor(FeatureEditor):
 
 class DiscreteFeatureEditor(FeatureEditor):
     ExpressionTooltip = FeatureEditor.ExpressionTooltip + \
-        "Result must be a string, if values are not explicitly given\n" \
-        "or a zero-based integer indices into a list of values given below."
+                        "Result must be a string, if values are not explicitly given\n" \
+                        "or a zero-based integer indices into a list of values given below."
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1104,7 +1154,7 @@ class MappingTransformCast:
         self.t = MappingTransform(None, mapping)
 
     def __reduce_ex__(self, protocol):
-        return type(self), (self.t.mapping, )
+        return type(self), (self.t.mapping,)
 
     def __call__(self, values):
         return self.t.transform(values)
@@ -1325,8 +1375,8 @@ class FeatureFunc:
 
     def __eq__(self, other):
         return type(self) is type(other) \
-            and self.expression == other.expression and self.args == other.args \
-            and self.extra_env == other.extra_env and self.cast == other.cast
+               and self.expression == other.expression and self.args == other.args \
+               and self.extra_env == other.extra_env and self.cast == other.cast
 
 
 if __name__ == "__main__":  # pragma: no cover
