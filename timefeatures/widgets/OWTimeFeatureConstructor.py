@@ -1,7 +1,7 @@
 """
-Feature Constructor
+Time Feature Constructor
 
-A widget for defining (constructing) new features from values
+A widget for defining (constructing) new time features from values
 of other variables.
 
 """
@@ -116,18 +116,23 @@ def selected_row(view):
         return None
 
 
-def shift_rows(table, n):  # FUNCIÓN SHIFT()
+def shift_rows(table, z, *args):  # FUNCIÓN SHIFT()
 
-    if n == 0:  # Si n = 0 la tabla quedara igual que la de entrada ya que se mantendrán los valores.
+    if z == 0:  # Si n = 0 la tabla quedara igual que la de entrada ya que se mantendrán los valores.
+        print(table)
+        print(z)
+        print(args)
         return table
 
-    num_rows = len(table)
+    if z == 22:
+        return table + 1
+
     new_table = Orange.data.Table(table.domain)  # Creación de tabla con el mismo tamaño que la tabla de entrada.
 
-    for i in range(num_rows):  # Obtendrá los valores de cada fila dependiendo de N.
-        shifted_instance = shift(table, i, n)
-        if shifted_instance is not None:  # Comprueba que no sea nulo.
-            new_table.append(shifted_instance)  # Lo añade a la nueva tabla.
+    for i in range(len(table)):  # Obtendrá los valores de cada fila dependiendo de N.
+        shift_instance = shift(table, i, z)
+        if shift_instance is not None:  # Comprueba que no sea nulo.
+            new_table.append(shift_instance)  # Lo añade a la nueva tabla.
 
     return new_table
 
@@ -159,7 +164,7 @@ Categorical features are passed as strings
                             if key in {"str", "float", "int", "len",
                                        "abs", "max", "min"}]))
 
-    TIME_FUNCTIONS = {"shift": shift_rows}
+    TIME_FUNCTIONS = {"shift": ""}
 
     featureChanged = Signal()
     featureEdited = Signal()
@@ -558,7 +563,7 @@ class FeatureConstructorHandler(DomainContextHandler):
         return True
 
 
-class OWFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
+class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
     name = "Time Feature Constructor"
     description = "Construct new time features (data columns) from a set of " \
                   "existing features in the input dataset."
@@ -1185,6 +1190,7 @@ def make_lambda(expression, args, env=None):
     func : types.FunctionType
     """
     # lambda *{args}* : EXPRESSION
+
     lambda_ = ast.Lambda(
         args=ast.arguments(
             posonlyargs=[],
@@ -1195,7 +1201,8 @@ def make_lambda(expression, args, env=None):
             kwarg=None,
             kwargannotation=None,
             defaults=[],
-            kw_defaults=[]),
+            kw_defaults=[],
+        ),
         body=expression.body,
     )
     lambda_ = ast.copy_location(lambda_, expression.body)
@@ -1214,6 +1221,7 @@ def make_lambda(expression, args, env=None):
         ),
         body=lambda_,
     )
+
     exp = ast.Expression(body=outer, lineno=1, col_offset=0)
     ast.fix_missing_locations(exp)
     GLOBALS = __GLOBALS.copy()
@@ -1300,7 +1308,7 @@ class FeatureFunc:
                  dtype=None):
         self.expression = expression
         self.args = args
-        self.extra_env = dict(extra_env or {})
+        self.extra_env = {'shift': shift_rows}
         self.func = make_lambda(ast.parse(expression, mode="eval"),
                                 [name for name, _ in args], self.extra_env)
         self.cast = cast
@@ -1317,24 +1325,36 @@ class FeatureFunc:
     def __call_table(self, table):
         try:
             cols = [self.extract_column(table, var) for _, var in self.args]
+
         except ValueError:
             if self.mask_exceptions:
                 return np.full(len(table), np.nan)
             else:
                 raise
-
         if not cols:
             args = [()] * len(table)
         else:
             args = zip(*cols)
+            # print("\nEsta es la lista: \n")
+            # print(list(args))
+
         f = self.func
         if self.mask_exceptions:
             y = list(starmap(ftry(f, Exception, np.nan), args))
         else:
-            y = list(starmap(f, args))
+            y = list(self.custom_starmap(f, args))
         if self.cast is not None:
             y = self.cast(y)
         return np.asarray(y, dtype=self.dtype)
+
+    def custom_starmap(self, f, args):  # Starmap modificado
+        i = 0
+        for arg in args:
+            i = i + 1
+            try:
+                yield f(*arg)
+            except:
+                yield f(*arg, i, args)
 
     def __call_instance(self, instance: Instance):
         table = Table.from_numpy(
@@ -1380,4 +1400,4 @@ class FeatureFunc:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    WidgetPreview(OWFeatureConstructor).run(Orange.data.Table("iris"))
+    WidgetPreview(OWTimeFeatureConstructor).run(Orange.data.Table("iris"))

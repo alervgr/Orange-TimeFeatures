@@ -5,9 +5,9 @@ TimeFeatures.egg-info/dependency_links.txt
 TimeFeatures.egg-info/entry_points.txt
 TimeFeatures.egg-info/top_level.txt
 timefeatures/__init__.py
-timefeatures/widgets/OWSaveDataDB.py
 timefeatures/widgets/OWTFGraphGenerator.py
 timefeatures/widgets/OWTimeFeatureConstructor.py
+timefeatures/widgets/OWTimeFeatureDB.py
 timefeatures/widgets/__init__.py
 timefeatures/widgets/icons/graphgenerator.svg
 timefeatures/widgets/icons/savedatadb.svg
