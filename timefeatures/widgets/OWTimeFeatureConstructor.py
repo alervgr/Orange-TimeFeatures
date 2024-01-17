@@ -97,6 +97,42 @@ def make_variable(descriptor, compute_value):
         raise TypeError
 
 
+def shift(var, z, column_name=None):  # FUNCIÓN SHIFT()
+
+    if z == 0:  # Si n = 0 la tabla quedara igual que la de entrada ya que se mantendrán los valores.
+        print(var)
+        print(z)
+        print(column_name)
+        return var
+
+    if z == 22:
+        print(var)
+        print(z)
+        return var + 1
+
+    new_table = Orange.data.Table(column_name.domain)  # Creación de tabla con el mismo tamaño que la tabla de entrada.
+
+    for i in range(len(var)):  # Obtendrá los valores de cada fila dependiendo de N.
+        shift_instance = shift_row(var, i, z)
+        if shift_instance is not None:  # Comprueba que no sea nulo.
+            new_table.append(shift_instance)  # Lo añade a la nueva tabla.
+
+    return new_table
+
+
+def shift_row(table, row_index, n):  # Obtiene el valor de la variable dependiendo del valor de N.
+
+    num_rows = len(table)
+    new_index = row_index + n
+
+    if 0 <= new_index < num_rows:  # Comprueba
+        new_instance = table[new_index]
+        if "?" not in new_instance:  # Comprueba si no es nulo
+            return new_instance
+
+    return None
+
+
 def selected_row(view):
     """
     Return the index of selected row in a `view` (:class:`QListView`)
@@ -114,40 +150,6 @@ def selected_row(view):
         return indexes[0].row()
     else:
         return None
-
-
-def shift_rows(table, z, *args):  # FUNCIÓN SHIFT()
-
-    if z == 0:  # Si n = 0 la tabla quedara igual que la de entrada ya que se mantendrán los valores.
-        print(table)
-        print(z)
-        print(args)
-        return table
-
-    if z == 22:
-        return table + 1
-
-    new_table = Orange.data.Table(table.domain)  # Creación de tabla con el mismo tamaño que la tabla de entrada.
-
-    for i in range(len(table)):  # Obtendrá los valores de cada fila dependiendo de N.
-        shift_instance = shift(table, i, z)
-        if shift_instance is not None:  # Comprueba que no sea nulo.
-            new_table.append(shift_instance)  # Lo añade a la nueva tabla.
-
-    return new_table
-
-
-def shift(table, row_index, n):  # Obtiene el valor de la variable dependiendo del valor de N.
-
-    num_rows = len(table)
-    new_index = row_index + n
-
-    if 0 <= new_index < num_rows:  # Comprueba
-        new_instance = table[new_index]
-        if "?" not in new_instance:  # Comprueba si no es nulo
-            return new_instance
-
-    return None
 
 
 class FeatureEditor(QFrame):
@@ -994,6 +996,7 @@ def run(data: Table, desc, use_values, task: TaskState) -> Result:
     finally:
         for variable in new_variables:
             variable.compute_value.mask_exceptions = True
+    print(new_variables)
     return Result(data, new_variables, new_metas)
 
 
@@ -1171,69 +1174,6 @@ class MappingTransformCast:
         return hash(self.t)
 
 
-def make_lambda(expression, args, env=None):
-    # type: (ast.Expression, List[str], Dict[str, Any]) -> types.FunctionType
-    """
-    Create an lambda function from a expression AST.
-
-    Parameters
-    ----------
-    expression : ast.Expression
-        The body of the lambda.
-    args : List[str]
-        A list of positional argument names
-    env : Optional[Dict[str, Any]]
-        Extra environment to capture in the lambda's closure.
-
-    Returns
-    -------
-    func : types.FunctionType
-    """
-    # lambda *{args}* : EXPRESSION
-
-    lambda_ = ast.Lambda(
-        args=ast.arguments(
-            posonlyargs=[],
-            args=[ast.arg(arg=arg, annotation=None) for arg in args],
-            varargs=None,
-            varargannotation=None,
-            kwonlyargs=[],
-            kwarg=None,
-            kwargannotation=None,
-            defaults=[],
-            kw_defaults=[],
-        ),
-        body=expression.body,
-    )
-    lambda_ = ast.copy_location(lambda_, expression.body)
-    # lambda **{env}** : lambda *{args}*: EXPRESSION
-    outer = ast.Lambda(
-        args=ast.arguments(
-            posonlyargs=[],
-            args=[ast.arg(arg=name, annotation=None) for name in (env or {})],
-            varargs=None,
-            varargannotation=None,
-            kwonlyargs=[],
-            kwarg=None,
-            kwargannotation=None,
-            defaults=[],
-            kw_defaults=[],
-        ),
-        body=lambda_,
-    )
-
-    exp = ast.Expression(body=outer, lineno=1, col_offset=0)
-    ast.fix_missing_locations(exp)
-    GLOBALS = __GLOBALS.copy()
-    GLOBALS["__builtins__"] = {}
-    # pylint: disable=eval-used
-    fouter = eval(compile(exp, "<lambda>", "eval"), GLOBALS)
-    assert isinstance(fouter, types.FunctionType)
-    finner = fouter(**env)
-    assert isinstance(finner, types.FunctionType)
-    return finner
-
-
 __ALLOWED = [
     "Ellipsis", "False", "None", "True", "abs", "all", "any", "acsii",
     "bin", "bool", "bytearray", "bytes", "chr", "complex", "dict",
@@ -1302,15 +1242,14 @@ class FeatureFunc:
         A function for casting the expressions result to the appropriate
         type (e.g. string representation of date/time variables to floats)
     """
+
     dtype: Optional['DType'] = None
 
     def __init__(self, expression, args, extra_env=None, cast=None, use_values=False,
                  dtype=None):
         self.expression = expression
         self.args = args
-        self.extra_env = {'shift': shift_rows}
-        self.func = make_lambda(ast.parse(expression, mode="eval"),
-                                [name for name, _ in args], self.extra_env)
+        self.extra_env = extra_env
         self.cast = cast
         self.mask_exceptions = True
         self.use_values = use_values
@@ -1324,37 +1263,48 @@ class FeatureFunc:
 
     def __call_table(self, table):
         try:
-            cols = [self.extract_column(table, var) for _, var in self.args]
+            # Crear un diccionario para almacenar las variables
+            variables = {}
+            listRes = []
+            cont = 0
+            # Luego, redefine el diccionario funciones_permitidas con la llamada a partial
+            funciones_permitidas = {'shift': functools.partial(shift)}
+            # Supongamos que self.args contiene los nombres de las variables
+            for _, var in self.args:
+                column = self.extract_column(table, var)
+                var_name = var.name.replace(" ", "_")
+                variables[var_name] = column
+
+            # Iterar sobre los valores de las columnas
+            for values in zip(*variables.values()):
+                # Asignar valores a las variables dinámicamente en un diccionario
+                var_dict = {var: value for var, value in zip(variables.keys(), values)}
+
+                # ------------------------SHIFT------------------------------------ (UN SOLO SHIFT)
+
+                column_name_match_shift = re.search(r'shift\(([^,]+),\d+\)', self.expression)
+                if column_name_match_shift:
+                    column_name = column_name_match_shift.group(1)
+                    # Actualizar el diccionario funciones_permitidas para incluir la columna correspondiente
+                    cont = cont+1
+                    funciones_permitidas = {'shift': functools.partial(shift, column_name=variables[column_name])}
+                    result = eval(self.expression, var_dict, funciones_permitidas)
+                else:
+                    # --------------------NO FUNCION TEMPORAL-----------------------
+                    result = eval(self.expression, var_dict, funciones_permitidas)
+
+                listRes.append(result)
+
+                # Imprimir la expresión y el resultado
+                print(self.expression + "=" + str(result))
 
         except ValueError:
             if self.mask_exceptions:
                 return np.full(len(table), np.nan)
             else:
                 raise
-        if not cols:
-            args = [()] * len(table)
-        else:
-            args = zip(*cols)
-            # print("\nEsta es la lista: \n")
-            # print(list(args))
 
-        f = self.func
-        if self.mask_exceptions:
-            y = list(starmap(ftry(f, Exception, np.nan), args))
-        else:
-            y = list(self.custom_starmap(f, args))
-        if self.cast is not None:
-            y = self.cast(y)
-        return np.asarray(y, dtype=self.dtype)
-
-    def custom_starmap(self, f, args):  # Starmap modificado
-        i = 0
-        for arg in args:
-            i = i + 1
-            try:
-                yield f(*arg)
-            except:
-                yield f(*arg, i, args)
+        return listRes
 
     def __call_instance(self, instance: Instance):
         table = Table.from_numpy(
