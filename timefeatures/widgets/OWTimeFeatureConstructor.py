@@ -97,24 +97,21 @@ def make_variable(descriptor, compute_value):
         raise TypeError
 
 
-def shift(var, z, tabla=None, cont=None):  # FUNCIÓN SHIFT()
-
-    cont = 0 if cont is None else cont
-
-    z = 0 if z is None else z
+def shift(var, z, tabla=None, cont=None):  # ----FUNCIÓN SHIFT()----
 
     if z == 0:
         return var
 
-    print(z)
+    if tabla[cont] is None:
+        return None
 
-    # Realizar el desplazamiento
     nuevo_cont = (cont + z) % len(tabla)
 
-    # Obtener el nuevo valor después del desplazamiento
+    if tabla[nuevo_cont] is None:
+        return None
+
     nuevo_valor = tabla[nuevo_cont]
 
-    # Devolver el nuevo valor
     return nuevo_valor
 
 
@@ -1258,6 +1255,7 @@ class FeatureFunc:
             for _, var in self.args:
                 column = self.extract_column(table, var)
                 var_name = var.name.replace(" ", "_")
+                var_name = var.name.replace("-", "_")
                 variables[var_name] = column
 
             # Iterar sobre los valores de las columnas
@@ -1279,9 +1277,6 @@ class FeatureFunc:
                     result = eval(self.expression, var_dict, funciones_permitidas)
 
                 listRes.append(result)
-
-                # Imprimir la expresión y el resultado
-                print(self.expression + "=" + str(result))
 
         except ValueError:
             if self.mask_exceptions:
