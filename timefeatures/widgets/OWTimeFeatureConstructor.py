@@ -97,40 +97,25 @@ def make_variable(descriptor, compute_value):
         raise TypeError
 
 
-def shift(var, z, column_name=None):  # FUNCIÓN SHIFT()
+def shift(var, z, tabla=None, cont=None):  # FUNCIÓN SHIFT()
 
-    if z == 0:  # Si n = 0 la tabla quedara igual que la de entrada ya que se mantendrán los valores.
-        print(var)
-        print(z)
-        print(column_name)
+    cont = 0 if cont is None else cont
+
+    z = 0 if z is None else z
+
+    if z == 0:
         return var
 
-    if z == 22:
-        print(var)
-        print(z)
-        return var + 1
+    print(z)
 
-    new_table = Orange.data.Table(column_name.domain)  # Creación de tabla con el mismo tamaño que la tabla de entrada.
+    # Realizar el desplazamiento
+    nuevo_cont = (cont + z) % len(tabla)
 
-    for i in range(len(var)):  # Obtendrá los valores de cada fila dependiendo de N.
-        shift_instance = shift_row(var, i, z)
-        if shift_instance is not None:  # Comprueba que no sea nulo.
-            new_table.append(shift_instance)  # Lo añade a la nueva tabla.
+    # Obtener el nuevo valor después del desplazamiento
+    nuevo_valor = tabla[nuevo_cont]
 
-    return new_table
-
-
-def shift_row(table, row_index, n):  # Obtiene el valor de la variable dependiendo del valor de N.
-
-    num_rows = len(table)
-    new_index = row_index + n
-
-    if 0 <= new_index < num_rows:  # Comprueba
-        new_instance = table[new_index]
-        if "?" not in new_instance:  # Comprueba si no es nulo
-            return new_instance
-
-    return None
+    # Devolver el nuevo valor
+    return nuevo_valor
 
 
 def selected_row(view):
@@ -1282,12 +1267,12 @@ class FeatureFunc:
 
                 # ------------------------SHIFT------------------------------------ (UN SOLO SHIFT)
 
-                column_name_match_shift = re.search(r'shift\(([^,]+),\d+\)', self.expression)
+                column_name_match_shift = re.search(r'shift\(([^,]+),[-\d]+\)', self.expression)
                 if column_name_match_shift:
-                    column_name = column_name_match_shift.group(1)
+                    tabla = column_name_match_shift.group(1)
                     # Actualizar el diccionario funciones_permitidas para incluir la columna correspondiente
-                    cont = cont+1
-                    funciones_permitidas = {'shift': functools.partial(shift, column_name=variables[column_name])}
+                    funciones_permitidas = {'shift': functools.partial(shift, tabla=variables[tabla], cont=cont)}
+                    cont = cont + 1
                     result = eval(self.expression, var_dict, funciones_permitidas)
                 else:
                     # --------------------NO FUNCION TEMPORAL-----------------------
