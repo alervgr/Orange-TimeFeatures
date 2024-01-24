@@ -1248,33 +1248,70 @@ class FeatureFunc:
             # Crear un diccionario para almacenar las variables
             variables = {}
             listRes = []
+            shift_info_list = []
             cont = 0
-            # Luego, redefine el diccionario funciones_permitidas con la llamada a partial
-            funciones_permitidas = {'shift': functools.partial(shift)}
             # Supongamos que self.args contiene los nombres de las variables
             for _, var in self.args:
                 column = self.extract_column(table, var)
-                var_name = var.name.replace(" ", "_")
-                var_name = var.name.replace("-", "_")
+                var_name = var.name.replace(" ", "_").replace("-", "_")
                 variables[var_name] = column
+
+            column_name_match_shift = re.search(r'shift\(([^,]+),[-\d]+\)', self.expression)
+
+            #----------SI HAY SHIFT----------
+
+            if column_name_match_shift:
+                # Iterar sobre los shifts y acumular información
+                for i, column_name_match_shift in enumerate(re.finditer(r'shift\(([^,]+),[-\d]+\)', self.expression)):
+                    tabla = column_name_match_shift.group(1)
+                    shift_info_list.append({'tabla': variables[tabla], 'cont': cont})
+
+                # Encontrar todas las coincidencias de shift en la expresión
+                matches = list(re.finditer(r'shift\(([^,]+),([-+]?\d+)\)', self.expression))
+
+                # Variable para contar coincidencias
+                match_counter = 0
+                modified_expression = self.expression
+
+                # Iterar sobre todas las coincidencias y realizar el reemplazo
+                for match in matches:
+                    variable_name = match.group(1)
+                    shift_value = match.group(2)
+
+                    # Construir la nueva expresión con el número incremental
+                    new_shift = f'shift{match_counter}({variable_name},{shift_value})'
+
+                    # Reemplazar solo la coincidencia actual en la expresión
+                    modified_expression = modified_expression.replace(match.group(0), new_shift, 1)
+
+                    # Incrementar el contador de coincidencias
+                    match_counter += 1
+
 
             # Iterar sobre los valores de las columnas
             for values in zip(*variables.values()):
                 # Asignar valores a las variables dinámicamente en un diccionario
                 var_dict = {var: value for var, value in zip(variables.keys(), values)}
 
-                # ------------------------SHIFT------------------------------------ (UN SOLO SHIFT)
+                # ------------------------SHIFT-----------------------------
 
-                column_name_match_shift = re.search(r'shift\(([^,]+),[-\d]+\)', self.expression)
                 if column_name_match_shift:
-                    tabla = column_name_match_shift.group(1)
-                    # Actualizar el diccionario funciones_permitidas para incluir la columna correspondiente
-                    funciones_permitidas = {'shift': functools.partial(shift, tabla=variables[tabla], cont=cont)}
-                    cont = cont + 1
-                    result = eval(self.expression, var_dict, funciones_permitidas)
+
+                    # Actualizar el diccionario de funciones permitidas para todos los shifts
+                    funciones_permitidas = {
+                        f'shift{i}': functools.partial(shift, tabla=info['tabla'], cont=info['cont'])
+                        for i, info in enumerate(shift_info_list)}
+
+                    for info in shift_info_list:
+                        info['cont'] += 1
+
+
+                    # Utilizar la función personalizada para evaluar la expresión
+                    result = eval(modified_expression, var_dict, funciones_permitidas)
+
                 else:
                     # --------------------NO FUNCION TEMPORAL-----------------------
-                    result = eval(self.expression, var_dict, funciones_permitidas)
+                    result = eval(self.expression, var_dict)
 
                 listRes.append(result)
 
