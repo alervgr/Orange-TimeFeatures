@@ -97,6 +97,46 @@ def make_variable(descriptor, compute_value):
         raise TypeError
 
 
+def modificar_expresion(expresion):
+    # Encontrar todas las coincidencias de shift y sum en la expresión
+    matches_shift = list(re.finditer(r'shift\(([^,]+),([-+]?\d+)\)', expresion))
+    matches_sum = list(re.finditer(r'sum\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expresion))
+
+    # Variable para contar matches
+    match_counter_shift = 0
+    match_counter_sum = 0
+    modified_expression = expresion
+
+    # Iterar sobre todas las coincidencias de shift y cambiar la expresión
+    for match in matches_shift:
+        variable_name = match.group(1)
+        shift_value = match.group(2)
+
+        # Construir la nueva expresión con el número incremental
+        new_shift = f'shift{match_counter_shift}({variable_name},{shift_value})'
+
+        # Reemplazar solo la coincidencia actual en la expresión
+        modified_expression = modified_expression.replace(match.group(0), new_shift, 1)
+
+        match_counter_shift += 1
+
+    # Iterar sobre todas las coincidencias de sum y cambiar la expresión
+    for match in matches_sum:
+        variable_name = match.group(1)
+        sum_value1 = match.group(2)
+        sum_value2 = match.group(3)
+
+        # Construir la nueva expresión con el número incremental
+        new_sum = f'sum{match_counter_sum}({variable_name},{sum_value1},{sum_value2})'
+
+        # Reemplazar solo la coincidencia actual en la expresión
+        modified_expression = modified_expression.replace(match.group(0), new_sum, 1)
+
+        match_counter_sum += 1
+
+    return modified_expression
+
+
 def shift(var, z, tabla=None, cont=None):  # ----FUNCIÓN SHIFT()----
 
     if z == 0:
@@ -114,6 +154,36 @@ def shift(var, z, tabla=None, cont=None):  # ----FUNCIÓN SHIFT()----
 
     return nuevo_valor
 
+def sum_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN SUM()----
+
+    if z == x:
+        return var
+
+    if x is not None:
+        if tabla is None or cont is None:
+            return None
+
+        # Manejar índices para límites de la tabla
+        x %= len(tabla)
+        z %= len(tabla)
+
+        nuevo_valor = 0
+
+        # Determinar el orden de los índices según los signos de x y z
+        if x <= z:
+            indices = range(x, z + 1)
+        else:
+            indices = range(z, x + 1)[::-1]  # Invertir el rango si z es mayor que x
+
+        # Sumar valores desde el índice cont + x hasta el índice cont + z, excluyendo valores nulos
+        for i in indices:
+            index = (cont + i) % len(tabla)
+            if tabla[index] is not None:
+                nuevo_valor += tabla[index]
+
+        return nuevo_valor
+    else:
+        return None
 
 def selected_row(view):
     """
@@ -148,7 +218,7 @@ Categorical features are passed as strings
                             if key in {"str", "float", "int", "len",
                                        "abs", "max", "min"}]))
 
-    TIME_FUNCTIONS = {"shift": ""}
+    TIME_FUNCTIONS = {"shift": "", "sum": ""}
 
     featureChanged = Signal()
     featureEdited = Signal()
@@ -284,8 +354,12 @@ Categorical features are passed as strings
         index = self.timefunctioncb.currentIndex()
         if index > 0:
             func = self.time_func_model[index]
-            self.insert_into_expression(func + "(,)")
-            self.expressionedit.cursorBackward(False, 2)
+            if func in ["shift"]:
+                self.insert_into_expression(func + "(,)")
+                self.expressionedit.cursorBackward(False, 2)
+            else:
+                self.insert_into_expression(func + "(,,)")
+                self.expressionedit.cursorBackward(False, 3)
             self.timefunctioncb.setCurrentIndex(0)
 
     def insert_into_expression(self, what):
@@ -1248,44 +1322,31 @@ class FeatureFunc:
             # Crear un diccionario para almacenar las variables
             variables = {}
             listRes = []
+            # Lista de variables por funcion
             shift_info_list = []
+            sum_info_list = []
             cont = 0
+            expresion_regular = r'shift\(([^,]+),[-\d]+\)|sum\(([^,]+),[-\d]+,[-\d]+\)'
             # Supongamos que self.args contiene los nombres de las variables
             for _, var in self.args:
                 column = self.extract_column(table, var)
                 var_name = var.name.replace(" ", "_").replace("-", "_")
                 variables[var_name] = column
 
-            column_name_match_shift = re.search(r'shift\(([^,]+),[-\d]+\)', self.expression)
+            column_name_match_tempfunc = re.search(expresion_regular, self.expression)
 
-            #----------SI HAY SHIFT----------
+            #----------SI HAY FUNCION TEMPORAL----------
+            if column_name_match_tempfunc:
+                # Iterar sobre las funciones y acumular información
+                for i, column_name_match_tempfunc in enumerate(re.finditer(expresion_regular, self.expression)):
+                    if column_name_match_tempfunc.group(1):
+                        tabla = column_name_match_tempfunc.group(1)
+                        shift_info_list.append({'tabla': variables[tabla], 'cont': cont})
+                    elif column_name_match_tempfunc.group(2):
+                        tabla = column_name_match_tempfunc.group(2)
+                        sum_info_list.append({'tabla': variables[tabla], 'cont': cont})
 
-            if column_name_match_shift:
-                # Iterar sobre los shifts y acumular información
-                for i, column_name_match_shift in enumerate(re.finditer(r'shift\(([^,]+),[-\d]+\)', self.expression)):
-                    tabla = column_name_match_shift.group(1)
-                    shift_info_list.append({'tabla': variables[tabla], 'cont': cont})
-
-                # Encontrar todas las coincidencias de shift en la expresión
-                matches = list(re.finditer(r'shift\(([^,]+),([-+]?\d+)\)', self.expression))
-
-                # Variable para contar coincidencias
-                match_counter = 0
-                modified_expression = self.expression
-
-                # Iterar sobre todas las coincidencias y realizar el reemplazo
-                for match in matches:
-                    variable_name = match.group(1)
-                    shift_value = match.group(2)
-
-                    # Construir la nueva expresión con el número incremental
-                    new_shift = f'shift{match_counter}({variable_name},{shift_value})'
-
-                    # Reemplazar solo la coincidencia actual en la expresión
-                    modified_expression = modified_expression.replace(match.group(0), new_shift, 1)
-
-                    # Incrementar el contador de coincidencias
-                    match_counter += 1
+                modified_expression = modificar_expresion(self.expression)
 
 
             # Iterar sobre los valores de las columnas
@@ -1293,16 +1354,29 @@ class FeatureFunc:
                 # Asignar valores a las variables dinámicamente en un diccionario
                 var_dict = {var: value for var, value in zip(variables.keys(), values)}
 
-                # ------------------------SHIFT-----------------------------
+                # ------------------------FUNCIONES TEMPORALES-----------------------------
 
-                if column_name_match_shift:
+                if column_name_match_tempfunc:
 
                     # Actualizar el diccionario de funciones permitidas para todos los shifts
-                    funciones_permitidas = {
+                    shift_functions = {
                         f'shift{i}': functools.partial(shift, tabla=info['tabla'], cont=info['cont'])
-                        for i, info in enumerate(shift_info_list)}
+                        for i, info in enumerate(shift_info_list)
+                    }
+                    # Actualizar el diccionario de funciones permitidas para todos los sums
+                    sum_functions = {
+                        f'sum{j}': functools.partial(sum_function, tabla=info['tabla'], cont=info['cont'])
+                        for j, info in enumerate(sum_info_list)
+                    }
 
+                    # Combinar ambos diccionarios en uno solo
+                    funciones_permitidas = {**shift_functions, **sum_functions}
+
+                    # CONTADORES
                     for info in shift_info_list:
+                        info['cont'] += 1
+
+                    for info in sum_info_list:
                         info['cont'] += 1
 
 
