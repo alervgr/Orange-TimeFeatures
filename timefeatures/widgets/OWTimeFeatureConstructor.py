@@ -101,10 +101,14 @@ def modificar_expresion(expresion):
     # Encontrar todas las coincidencias de shift y sum en la expresión
     matches_shift = list(re.finditer(r'shift\(([^,]+),([-+]?\d+)\)', expresion))
     matches_sum = list(re.finditer(r'sum\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expresion))
+    matches_mean = list(re.finditer(r'mean\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expresion))
+    matches_count = list(re.finditer(r'count\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expresion))
 
     # Variable para contar matches
     match_counter_shift = 0
     match_counter_sum = 0
+    match_counter_mean = 0
+    match_counter_count = 0
     modified_expression = expresion
 
     # Iterar sobre todas las coincidencias de shift y cambiar la expresión
@@ -134,6 +138,32 @@ def modificar_expresion(expresion):
 
         match_counter_sum += 1
 
+    for match in matches_mean:
+        variable_name = match.group(1)
+        mean_value1 = match.group(2)
+        mean_value2 = match.group(3)
+
+        # Construir la nueva expresión con el número incremental
+        new_mean = f'mean{match_counter_sum}({variable_name},{mean_value1},{mean_value2})'
+
+        # Reemplazar solo la coincidencia actual en la expresión
+        modified_expression = modified_expression.replace(match.group(0), new_mean, 1)
+
+        match_counter_mean += 1
+
+    for match in matches_count:
+        variable_name = match.group(1)
+        count_value1 = match.group(2)
+        count_value2 = match.group(3)
+
+        # Construir la nueva expresión con el número incremental
+        new_count = f'count{match_counter_count}({variable_name},{count_value1},{count_value2})'
+
+        # Reemplazar solo la coincidencia actual en la expresión
+        modified_expression = modified_expression.replace(match.group(0), new_count, 1)
+
+        match_counter_count += 1
+
     return modified_expression
 
 
@@ -141,9 +171,6 @@ def shift(var, z, tabla=None, cont=None):  # ----FUNCIÓN SHIFT()----
 
     if z == 0:
         return var
-
-    if tabla[cont] is None:
-        return None
 
     nuevo_cont = (cont + z) % len(tabla)
 
@@ -156,30 +183,84 @@ def shift(var, z, tabla=None, cont=None):  # ----FUNCIÓN SHIFT()----
 
 def sum_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN SUM()----
 
+    if tabla is None or cont is None:
+        return None
+
+    if z == x:
+        return var
+    nuevo_valor = 0
+
+    # Determinar el orden de los índices según los signos de x y z
+    if x <= z:
+        indices = range(x, z + 1)
+    else:
+        indices = range(z, x + 1)  # Invertir el rango si z es mayor que x
+
+    # Sumar valores desde el índice cont + x hasta el índice cont + z, excluyendo valores nulos
+    for i in indices:
+        index = (cont + i) % len(tabla)
+        if not math.isnan(tabla[index]):
+            nuevo_valor += tabla[index]
+
+    return nuevo_valor
+
+def mean_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN MEAN()----
+
+    if tabla is None or cont is None:
+        return None
+
     if z == x:
         return var
 
-    if x is not None:
-        if tabla is None or cont is None:
-            return None
+    nuevo_valor = 0
+    count = 0
 
-        nuevo_valor = 0
+    if x <= z:
+        indices = range(x, z + 1)
+    else:
+        indices = range(z, x + 1)  # Invertir el rango si z es mayor que x
 
+    # Sumar valores desde el índice cont + x hasta el índice cont + z, excluyendo valores nulos
+    for i in indices:
+        index = (cont + i) % len(tabla)
+        if not math.isnan(tabla[index]):
+            nuevo_valor += tabla[index]
+            count += 1
+
+    # Calcular la media dividiendo la suma por la cantidad de valores no nulos
+    if count > 0:
+        media = nuevo_valor / count
+        return media
+
+    else:
+        return None
+
+def count_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN COUNT()----
+
+    if tabla is None or cont is None or x is None:
+        return None
+
+    count = 0
+
+    if z == x and not math.isnan(var):
+        print(f"Entro en el caso especial: z={z}, x={x}, tabla[cont]={tabla[cont]}")
+        return 1
+    else:
         # Determinar el orden de los índices según los signos de x y z
         if x <= z:
             indices = range(x, z + 1)
         else:
             indices = range(z, x + 1)  # Invertir el rango si z es mayor que x
 
-        # Sumar valores desde el índice cont + x hasta el índice cont + z, excluyendo valores nulos
+        # Contar valores no nulos desde el índice cont + x hasta el índice cont + z
         for i in indices:
             index = (cont + i) % len(tabla)
-            if tabla[index] is not None:
-                nuevo_valor += tabla[index]
+            if not math.isnan(tabla[index]):
+                count += 1
 
-        return nuevo_valor
-    else:
-        return None
+        print(f"Conteo final: count={count}")
+        return count
+
 
 def selected_row(view):
     """
@@ -214,7 +295,7 @@ Categorical features are passed as strings
                             if key in {"str", "float", "int", "len",
                                        "abs", "max", "min"}]))
 
-    TIME_FUNCTIONS = {"shift": "", "sum": ""}
+    TIME_FUNCTIONS = {"shift": "", "sum": "", "mean": "", "count": ""}
 
     featureChanged = Signal()
     featureEdited = Signal()
@@ -1318,12 +1399,17 @@ class FeatureFunc:
             # Crear un diccionario para almacenar las variables
             variables = {}
             listRes = []
+
             # Lista de variables por funcion
             shift_info_list = []
             sum_info_list = []
+            mean_info_list = []
+            count_info_list = []
+
             cont = 0
-            expresion_regular = r'shift\(([^,]+),[-\d]+\)|sum\(([^,]+),[-\d]+,[-\d]+\)'
-            # Supongamos que self.args contiene los nombres de las variables
+            expresion_regular = r'shift\(([^,]+),[-\d]+\)|sum\(([^,]+),[-\d]+,[-\d]+\)|mean\(([^,]+),[-\d]+,[-\d]+\)|count\(([^,]+),[-\d]+,[-\d]+\)'
+
+            # Obtenemos las columnas de las variables
             for _, var in self.args:
                 column = self.extract_column(table, var)
                 var_name = var.name.replace(" ", "_").replace("-", "_")
@@ -1341,6 +1427,12 @@ class FeatureFunc:
                     elif column_name_match_tempfunc.group(2):
                         tabla = column_name_match_tempfunc.group(2)
                         sum_info_list.append({'tabla': variables[tabla], 'cont': cont})
+                    elif column_name_match_tempfunc.group(3):
+                        tabla = column_name_match_tempfunc.group(3)
+                        mean_info_list.append({'tabla': variables[tabla], 'cont': cont})
+                    elif column_name_match_tempfunc.group(4):
+                        tabla = column_name_match_tempfunc.group(4)
+                        count_info_list.append({'tabla': variables[tabla], 'cont': cont})
 
                 modified_expression = modificar_expresion(self.expression)
 
@@ -1361,12 +1453,23 @@ class FeatureFunc:
                     }
                     # Actualizar el diccionario de funciones permitidas para todos los sums
                     sum_functions = {
-                        f'sum{j}': functools.partial(sum_function, tabla=info['tabla'], cont=info['cont'])
-                        for j, info in enumerate(sum_info_list)
+                        f'sum{i}': functools.partial(sum_function, tabla=info['tabla'], cont=info['cont'])
+                        for i, info in enumerate(sum_info_list)
+                    }
+                    # Actualizar el diccionario de funciones permitidas para todos los means
+                    mean_functions = {
+                        f'mean{i}': functools.partial(mean_function, tabla=info['tabla'], cont=info['cont'])
+                        for i, info in enumerate(mean_info_list)
+                    }
+                    # Actualizar el diccionario de funciones permitidas para todos los means
+                    count_functions = {
+                        f'count{i}': functools.partial(count_function, tabla=info['tabla'], cont=info['cont'])
+                        for i, info in enumerate(count_info_list)
                     }
 
-                    # Combinar ambos diccionarios en uno solo
-                    funciones_permitidas = {**shift_functions, **sum_functions}
+
+                    # Combinar todos los diccionarios en uno solo
+                    funciones_permitidas = {**shift_functions, **sum_functions, **mean_functions, **count_functions}
 
                     # CONTADORES
                     for info in shift_info_list:
@@ -1375,10 +1478,17 @@ class FeatureFunc:
                     for info in sum_info_list:
                         info['cont'] += 1
 
+                    for info in mean_info_list:
+                        info['cont'] += 1
+
+                    for info in count_info_list:
+                        info['cont'] += 1
+
 
                     # Utilizar la función personalizada para evaluar la expresión
                     result = eval(modified_expression, var_dict, funciones_permitidas)
 
+                    # TEST --> ((mean(sepal_length,-1,2)+1+sepal_length+shift(sepal_width,1)+mean(sepal_length,-1,2)+sum(petal_width,0,2)+mean(sepal_length,0,2))-shift(sepal_width,2)/2)-count(petal_width,0,4) = 18,3
                 else:
                     # --------------------NO FUNCION TEMPORAL-----------------------
                     result = eval(self.expression, var_dict)
