@@ -105,6 +105,7 @@ def modificar_expresion(expresion):
     matches_count = list(re.finditer(r'count\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expresion))
     matches_min = list(re.finditer(r'min\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expresion))
     matches_max = list(re.finditer(r'max\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expresion))
+    matches_sd = list(re.finditer(r'sd\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expresion))
 
     # Variable para contar matches
     match_counter_shift = 0
@@ -113,6 +114,7 @@ def modificar_expresion(expresion):
     match_counter_count = 0
     match_counter_min = 0
     match_counter_max = 0
+    match_counter_sd = 0
     modified_expression = expresion
 
     # Iterar sobre todas las coincidencias de shift y cambiar la expresión
@@ -194,9 +196,22 @@ def modificar_expresion(expresion):
 
         match_counter_max += 1
 
+    for match in matches_sd:
+        variable_name = match.group(1)
+        sd_value1 = match.group(2)
+        sd_value2 = match.group(3)
+
+        # Construir la nueva expresión con el número incremental
+        new_sd = f'sd{match_counter_sd}({variable_name},{sd_value1},{sd_value2})'
+
+        # Reemplazar solo la coincidencia actual en la expresión
+        modified_expression = modified_expression.replace(match.group(0), new_sd, 1)
+
+        match_counter_sd += 1
+
     return modified_expression
 
-def increment_meters(shift_info_list, sum_info_list, mean_info_list, count_info_list, min_info_list, max_info_list):
+def increment_meters(shift_info_list, sum_info_list, mean_info_list, count_info_list, min_info_list, max_info_list, sd_info_list):
 
     for info in shift_info_list:
         info['cont'] += 1
@@ -214,6 +229,9 @@ def increment_meters(shift_info_list, sum_info_list, mean_info_list, count_info_
         info['cont'] += 1
 
     for info in max_info_list:
+        info['cont'] += 1
+
+    for info in sd_info_list:
         info['cont'] += 1
 
 def shift(var, z, tabla=None, cont=None):  # ----FUNCIÓN SHIFT()----
@@ -364,6 +382,34 @@ def max_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN MAX()----
 
         return max_value
 
+def sd_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN SD()----
+
+    if var is None or z is None or x is None:
+        raise ValueError()
+
+    valores = []
+
+    if z == x and not np.isnan(var):
+        valores.append(var)
+    else:
+        # Determinar el orden de los índices según los signos de x y z
+        if x <= z:
+            indices = range(x, z + 1)
+        else:
+            indices = range(z, x + 1)
+
+        # Agregar valores a la lista
+        for i in indices:
+            index = (cont + i) % len(tabla)
+            if not np.isnan(tabla[index]):
+                valores.append(tabla[index])
+
+    if valores:
+        std_desviacion = np.std(valores)
+        return std_desviacion
+    else:
+        return None
+
 def selected_row(view):
     """
     Return the index of selected row in a `view` (:class:`QListView`)
@@ -397,7 +443,7 @@ Categorical features are passed as strings
                             if key in {"str", "float", "int", "len",
                                        "abs", "max", "min"}]))
 
-    TIME_FUNCTIONS = {"shift": "", "sum": "", "mean": "", "count": "", "min": "", "max": ""}
+    TIME_FUNCTIONS = {"shift": "", "sum": "", "mean": "", "count": "", "min": "", "max": "", "sd": ""}
 
     featureChanged = Signal()
     featureEdited = Signal()
@@ -1500,7 +1546,7 @@ class FeatureFunc:
         try:
             # Crear un diccionario para almacenar las variables
             variables = {}
-            listRes = []
+            list_res = []
 
             # Lista de variables por funcion
             shift_info_list = []
@@ -1509,9 +1555,12 @@ class FeatureFunc:
             count_info_list = []
             min_info_list = []
             max_info_list = []
+            sd_info_list = []
 
             cont = 0
-            expresion_regular = r'shift\(([^,]+),[-\d]+\)|sum\(([^,]+),[-\d]+,[-\d]+\)|mean\(([^,]+),[-\d]+,[-\d]+\)|count\(([^,]+),[-\d]+,[-\d]+\)|min\(([^,]+),[-\d]+,[-\d]+\)|max\(([^,]+),[-\d]+,[-\d]+\)'
+            expresion_regular = r'shift\(([^,]+),[-\d]+\)|sum\(([^,]+),[-\d]+,[-\d]+\)|mean\(([^,]+),[-\d]+,' \
+                                r'[-\d]+\)|count\(([^,]+),[-\d]+,[-\d]+\)|min\(([^,]+),[-\d]+,[-\d]+\)|max\(([^,]+),' \
+                                r'[-\d]+,[-\d]+\)|sd\(([^,]+),[-\d]+,[-\d]+\)'
 
             # Obtenemos las columnas de las variables
             for _, var in self.args:
@@ -1524,7 +1573,7 @@ class FeatureFunc:
             #----------SI HAY FUNCION TEMPORAL----------
             if column_name_match_tempfunc:
                 # Iterar sobre las funciones y acumular información
-                for i, column_name_match_tempfunc in enumerate(re.finditer(expresion_regular, self.expression)):
+                for column_name_match_tempfunc in re.finditer(expresion_regular, self.expression):
                     if column_name_match_tempfunc.group(1):
                         tabla = column_name_match_tempfunc.group(1)
                         shift_info_list.append({'tabla': variables[tabla], 'cont': cont})
@@ -1543,9 +1592,11 @@ class FeatureFunc:
                     elif column_name_match_tempfunc.group(6):
                         tabla = column_name_match_tempfunc.group(6)
                         max_info_list.append({'tabla': variables[tabla], 'cont': cont})
+                    elif column_name_match_tempfunc.group(7):
+                        tabla = column_name_match_tempfunc.group(7)
+                        sd_info_list.append({'tabla': variables[tabla], 'cont': cont})
 
                 modified_expression = modificar_expresion(self.expression)
-
 
             # Iterar sobre los valores de las columnas
             for values in zip(*variables.values()):
@@ -1556,43 +1607,47 @@ class FeatureFunc:
 
                 if column_name_match_tempfunc:
 
-                    # Actualizar el diccionario de funciones permitidas para todos los shifts
+                    # Actualizar el diccionario de funciones permitidas para todos los shift
                     shift_functions = {
                         f'shift{i}': functools.partial(shift, tabla=info['tabla'], cont=info['cont'])
                         for i, info in enumerate(shift_info_list)
                     }
-                    # Actualizar el diccionario de funciones permitidas para todos los sums
+                    # Actualizar el diccionario de funciones permitidas para todos los sum
                     sum_functions = {
                         f'sum{i}': functools.partial(sum_function, tabla=info['tabla'], cont=info['cont'])
                         for i, info in enumerate(sum_info_list)
                     }
-                    # Actualizar el diccionario de funciones permitidas para todos los means
+                    # Actualizar el diccionario de funciones permitidas para todos los mean
                     mean_functions = {
                         f'mean{i}': functools.partial(mean_function, tabla=info['tabla'], cont=info['cont'])
                         for i, info in enumerate(mean_info_list)
                     }
-                    # Actualizar el diccionario de funciones permitidas para todos los means
+                    # Actualizar el diccionario de funciones permitidas para todos los count
                     count_functions = {
                         f'count{i}': functools.partial(count_function, tabla=info['tabla'], cont=info['cont'])
                         for i, info in enumerate(count_info_list)
                     }
-                    # Actualizar el diccionario de funciones permitidas para todos los mins
+                    # Actualizar el diccionario de funciones permitidas para todos los min
                     min_functions = {
                         f'min{i}': functools.partial(min_function, tabla=info['tabla'], cont=info['cont'])
                         for i, info in enumerate(min_info_list)
                     }
-                    # Actualizar el diccionario de funciones permitidas para todos los mins
+                    # Actualizar el diccionario de funciones permitidas para todos los max
                     max_functions = {
                         f'max{i}': functools.partial(max_function, tabla=info['tabla'], cont=info['cont'])
                         for i, info in enumerate(max_info_list)
                     }
-
+                    # Actualizar el diccionario de funciones permitidas para todos los sd
+                    sd_functions = {
+                        f'sd{i}': functools.partial(sd_function, tabla=info['tabla'], cont=info['cont'])
+                        for i, info in enumerate(sd_info_list)
+                    }
 
                     # Combinar todos los diccionarios en uno solo
-                    funciones_permitidas = {**shift_functions, **sum_functions, **mean_functions, **count_functions, **min_functions, **max_functions}
+                    funciones_permitidas = {**shift_functions, **sum_functions, **mean_functions, **count_functions, **min_functions, **max_functions, **sd_functions}
 
                     # INCREMENTAR CONTADORES
-                    increment_meters(shift_info_list, sum_info_list, mean_info_list, count_info_list, min_info_list, max_info_list)
+                    increment_meters(shift_info_list, sum_info_list, mean_info_list, count_info_list, min_info_list, max_info_list, sd_info_list)
 
                     # Utilizar la función personalizada para evaluar la expresión
                     result = eval(modified_expression, var_dict, funciones_permitidas)
@@ -1602,7 +1657,7 @@ class FeatureFunc:
                     # --------------------NO FUNCION TEMPORAL-----------------------
                     result = eval(self.expression, var_dict)
 
-                listRes.append(result)
+                list_res.append(result)
 
         except ValueError:
             if self.mask_exceptions:
@@ -1610,7 +1665,7 @@ class FeatureFunc:
             else:
                 raise
 
-        return listRes
+        return list_res
 
     def __call_instance(self, instance: Instance):
         table = Table.from_numpy(
