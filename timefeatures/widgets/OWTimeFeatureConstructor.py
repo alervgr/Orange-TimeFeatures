@@ -163,17 +163,13 @@ def sum_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN SUM()----
         if tabla is None or cont is None:
             return None
 
-        # Manejar índices para límites de la tabla
-        x %= len(tabla)
-        z %= len(tabla)
-
         nuevo_valor = 0
 
         # Determinar el orden de los índices según los signos de x y z
         if x <= z:
             indices = range(x, z + 1)
         else:
-            indices = range(z, x + 1)[::-1]  # Invertir el rango si z es mayor que x
+            indices = range(z, x + 1)  # Invertir el rango si z es mayor que x
 
         # Sumar valores desde el índice cont + x hasta el índice cont + z, excluyendo valores nulos
         for i in indices:
