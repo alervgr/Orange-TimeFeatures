@@ -103,12 +103,16 @@ def modificar_expresion(expresion):
     matches_sum = list(re.finditer(r'sum\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expresion))
     matches_mean = list(re.finditer(r'mean\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expresion))
     matches_count = list(re.finditer(r'count\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expresion))
+    matches_min = list(re.finditer(r'min\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expresion))
+    matches_max = list(re.finditer(r'max\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expresion))
 
     # Variable para contar matches
     match_counter_shift = 0
     match_counter_sum = 0
     match_counter_mean = 0
     match_counter_count = 0
+    match_counter_min = 0
+    match_counter_max = 0
     modified_expression = expresion
 
     # Iterar sobre todas las coincidencias de shift y cambiar la expresión
@@ -164,8 +168,53 @@ def modificar_expresion(expresion):
 
         match_counter_count += 1
 
+    for match in matches_min:
+        variable_name = match.group(1)
+        min_value1 = match.group(2)
+        min_value2 = match.group(3)
+
+        # Construir la nueva expresión con el número incremental
+        new_min = f'min{match_counter_min}({variable_name},{min_value1},{min_value2})'
+
+        # Reemplazar solo la coincidencia actual en la expresión
+        modified_expression = modified_expression.replace(match.group(0), new_min, 1)
+
+        match_counter_min += 1
+
+    for match in matches_max:
+        variable_name = match.group(1)
+        max_value1 = match.group(2)
+        max_value2 = match.group(3)
+
+        # Construir la nueva expresión con el número incremental
+        new_max = f'max{match_counter_max}({variable_name},{max_value1},{max_value2})'
+
+        # Reemplazar solo la coincidencia actual en la expresión
+        modified_expression = modified_expression.replace(match.group(0), new_max, 1)
+
+        match_counter_max += 1
+
     return modified_expression
 
+def increment_meters(shift_info_list, sum_info_list, mean_info_list, count_info_list, min_info_list, max_info_list):
+
+    for info in shift_info_list:
+        info['cont'] += 1
+
+    for info in sum_info_list:
+        info['cont'] += 1
+
+    for info in mean_info_list:
+        info['cont'] += 1
+
+    for info in count_info_list:
+        info['cont'] += 1
+
+    for info in min_info_list:
+        info['cont'] += 1
+
+    for info in max_info_list:
+        info['cont'] += 1
 
 def shift(var, z, tabla=None, cont=None):  # ----FUNCIÓN SHIFT()----
 
@@ -243,7 +292,6 @@ def count_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN COUNT()---
     count = 0
 
     if z == x and not math.isnan(var):
-        print(f"Entro en el caso especial: z={z}, x={x}, tabla[cont]={tabla[cont]}")
         return 1
     else:
         # Determinar el orden de los índices según los signos de x y z
@@ -258,9 +306,63 @@ def count_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN COUNT()---
             if not math.isnan(tabla[index]):
                 count += 1
 
-        print(f"Conteo final: count={count}")
         return count
 
+def min_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN MIN()----
+
+    if tabla is None or cont is None or x is None:
+        return None
+
+    min_value = float('inf')  # Infinito
+
+    if z == x and not math.isnan(var):
+        return var
+    else:
+        # Determinar el orden de los índices según los signos de x y z
+        if x <= z:
+            indices = range(x, z + 1)
+        else:
+            indices = range(z, x + 1)
+
+        # Encontrar el valor mínimo no nulo desde el índice cont + x hasta el índice cont + z
+        for i in indices:
+            index = (cont + i) % len(tabla)
+            if not math.isnan(tabla[index]):
+                min_value = min(min_value, tabla[index])
+
+        # Si no se encuentra ningún valor no nulo, devolver None
+        if min_value == float('inf'):
+            return None
+
+        return min_value
+
+def max_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN MAX()----
+
+    if tabla is None or cont is None or x is None:
+        return None
+
+    max_value = float('-inf')  # -Infinito
+
+    if z == x and not math.isnan(var):
+        return var
+    else:
+        # Determinar el orden de los índices según los signos de x y z
+        if x <= z:
+            indices = range(x, z + 1)
+        else:
+            indices = range(z, x + 1)
+
+        # Encontrar el valor máximo no nulo
+        for i in indices:
+            index = (cont + i) % len(tabla)
+            if not math.isnan(tabla[index]):
+                max_value = max(max_value, tabla[index])
+
+        # Si no se encuentra ningún valor no nulo, devolver None
+        if max_value == float('-inf'):
+            return None
+
+        return max_value
 
 def selected_row(view):
     """
@@ -295,7 +397,7 @@ Categorical features are passed as strings
                             if key in {"str", "float", "int", "len",
                                        "abs", "max", "min"}]))
 
-    TIME_FUNCTIONS = {"shift": "", "sum": "", "mean": "", "count": ""}
+    TIME_FUNCTIONS = {"shift": "", "sum": "", "mean": "", "count": "", "min": "", "max": ""}
 
     featureChanged = Signal()
     featureEdited = Signal()
@@ -1405,9 +1507,11 @@ class FeatureFunc:
             sum_info_list = []
             mean_info_list = []
             count_info_list = []
+            min_info_list = []
+            max_info_list = []
 
             cont = 0
-            expresion_regular = r'shift\(([^,]+),[-\d]+\)|sum\(([^,]+),[-\d]+,[-\d]+\)|mean\(([^,]+),[-\d]+,[-\d]+\)|count\(([^,]+),[-\d]+,[-\d]+\)'
+            expresion_regular = r'shift\(([^,]+),[-\d]+\)|sum\(([^,]+),[-\d]+,[-\d]+\)|mean\(([^,]+),[-\d]+,[-\d]+\)|count\(([^,]+),[-\d]+,[-\d]+\)|min\(([^,]+),[-\d]+,[-\d]+\)|max\(([^,]+),[-\d]+,[-\d]+\)'
 
             # Obtenemos las columnas de las variables
             for _, var in self.args:
@@ -1433,6 +1537,12 @@ class FeatureFunc:
                     elif column_name_match_tempfunc.group(4):
                         tabla = column_name_match_tempfunc.group(4)
                         count_info_list.append({'tabla': variables[tabla], 'cont': cont})
+                    elif column_name_match_tempfunc.group(5):
+                        tabla = column_name_match_tempfunc.group(5)
+                        min_info_list.append({'tabla': variables[tabla], 'cont': cont})
+                    elif column_name_match_tempfunc.group(6):
+                        tabla = column_name_match_tempfunc.group(6)
+                        max_info_list.append({'tabla': variables[tabla], 'cont': cont})
 
                 modified_expression = modificar_expresion(self.expression)
 
@@ -1466,24 +1576,23 @@ class FeatureFunc:
                         f'count{i}': functools.partial(count_function, tabla=info['tabla'], cont=info['cont'])
                         for i, info in enumerate(count_info_list)
                     }
+                    # Actualizar el diccionario de funciones permitidas para todos los mins
+                    min_functions = {
+                        f'min{i}': functools.partial(min_function, tabla=info['tabla'], cont=info['cont'])
+                        for i, info in enumerate(min_info_list)
+                    }
+                    # Actualizar el diccionario de funciones permitidas para todos los mins
+                    max_functions = {
+                        f'max{i}': functools.partial(max_function, tabla=info['tabla'], cont=info['cont'])
+                        for i, info in enumerate(max_info_list)
+                    }
 
 
                     # Combinar todos los diccionarios en uno solo
-                    funciones_permitidas = {**shift_functions, **sum_functions, **mean_functions, **count_functions}
+                    funciones_permitidas = {**shift_functions, **sum_functions, **mean_functions, **count_functions, **min_functions, **max_functions}
 
-                    # CONTADORES
-                    for info in shift_info_list:
-                        info['cont'] += 1
-
-                    for info in sum_info_list:
-                        info['cont'] += 1
-
-                    for info in mean_info_list:
-                        info['cont'] += 1
-
-                    for info in count_info_list:
-                        info['cont'] += 1
-
+                    # INCREMENTAR CONTADORES
+                    increment_meters(shift_info_list, sum_info_list, mean_info_list, count_info_list, min_info_list, max_info_list)
 
                     # Utilizar la función personalizada para evaluar la expresión
                     result = eval(modified_expression, var_dict, funciones_permitidas)
