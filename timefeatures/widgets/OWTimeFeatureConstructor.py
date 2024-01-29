@@ -97,15 +97,15 @@ def make_variable(descriptor, compute_value):
         raise TypeError
 
 
-def modificar_expresion(expresion):
+def modificar_expression(expression):
     # Encontrar todas las coincidencias de shift y sum en la expresión
-    matches_shift = list(re.finditer(r'shift\(([^,]+),([-+]?\d+)\)', expresion))
-    matches_sum = list(re.finditer(r'sum\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expresion))
-    matches_mean = list(re.finditer(r'mean\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expresion))
-    matches_count = list(re.finditer(r'count\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expresion))
-    matches_min = list(re.finditer(r'min\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expresion))
-    matches_max = list(re.finditer(r'max\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expresion))
-    matches_sd = list(re.finditer(r'sd\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expresion))
+    matches_shift = list(re.finditer(r'shift\(([^,]+),([-+]?\d+)\)', expression))
+    matches_sum = list(re.finditer(r'sum\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expression))
+    matches_mean = list(re.finditer(r'mean\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expression))
+    matches_count = list(re.finditer(r'count\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expression))
+    matches_min = list(re.finditer(r'min\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expression))
+    matches_max = list(re.finditer(r'max\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expression))
+    matches_sd = list(re.finditer(r'sd\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expression))
 
     # Variable para contar matches
     match_counter_shift = 0
@@ -115,7 +115,7 @@ def modificar_expresion(expresion):
     match_counter_min = 0
     match_counter_max = 0
     match_counter_sd = 0
-    modified_expression = expresion
+    modified_expression = expression
 
     # Iterar sobre todas las coincidencias de shift y cambiar la expresión
     for match in matches_shift:
@@ -211,40 +211,15 @@ def modificar_expresion(expresion):
 
     return modified_expression
 
-def increment_meters(shift_info_list, sum_info_list, mean_info_list, count_info_list, min_info_list, max_info_list, sd_info_list):
 
-    for info in shift_info_list:
-        info['cont'] += 1
-
-    for info in sum_info_list:
-        info['cont'] += 1
-
-    for info in mean_info_list:
-        info['cont'] += 1
-
-    for info in count_info_list:
-        info['cont'] += 1
-
-    for info in min_info_list:
-        info['cont'] += 1
-
-    for info in max_info_list:
-        info['cont'] += 1
-
-    for info in sd_info_list:
-        info['cont'] += 1
-
-def shift(var, z, tabla=None, cont=None):  # ----FUNCIÓN SHIFT()----
+def shift_function(var, z, tabla=None, cont=None):  # ----FUNCIÓN SHIFT()----
 
     if z == 0:
         return var
 
     nuevo_cont = (cont + z)
 
-    if nuevo_cont < 0:
-        return None
-
-    if nuevo_cont >= len(tabla):
+    if nuevo_cont < 0 or nuevo_cont >= len(tabla):
         return None
 
     if tabla[nuevo_cont] is None:
@@ -253,6 +228,7 @@ def shift(var, z, tabla=None, cont=None):  # ----FUNCIÓN SHIFT()----
     nuevo_valor = tabla[nuevo_cont]
 
     return nuevo_valor
+
 
 def sum_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN SUM()----
 
@@ -263,19 +239,17 @@ def sum_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN SUM()----
         return var
     nuevo_valor = 0
 
-    # Determinar el orden de los índices según los signos de x y z
-    if x <= z:
-        indices = range(x, z + 1)
-    else:
-        indices = range(z, x + 1)  # Invertir el rango si z es mayor que x
+    indices = range(z, x + 1)  # Invertir el rango si z es mayor que x
 
     # Sumar valores desde el índice cont + x hasta el índice cont + z, excluyendo valores nulos
     for i in indices:
-        index = (cont + i) % len(tabla)
-        if not math.isnan(tabla[index]):
-            nuevo_valor += tabla[index]
+        index = (cont + i)
+        if index > 0 or index <= len(tabla):
+            if not math.isnan(tabla[index]):
+                nuevo_valor += tabla[index]
 
     return nuevo_valor
+
 
 def mean_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN MEAN()----
 
@@ -308,6 +282,7 @@ def mean_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN MEAN()----
     else:
         return None
 
+
 def count_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN COUNT()----
 
     if tabla is None or cont is None or x is None:
@@ -331,6 +306,7 @@ def count_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN COUNT()---
                 count += 1
 
         return count
+
 
 def min_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN MIN()----
 
@@ -360,6 +336,7 @@ def min_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN MIN()----
 
         return min_value
 
+
 def max_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN MAX()----
 
     if tabla is None or cont is None or x is None:
@@ -388,6 +365,7 @@ def max_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN MAX()----
 
         return max_value
 
+
 def sd_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN SD()----
 
     if var is None or z is None or x is None:
@@ -415,6 +393,7 @@ def sd_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN SD()----
         return std_desviacion
     else:
         return None
+
 
 def selected_row(view):
     """
@@ -506,7 +485,7 @@ Categorical features are passed as strings
 
         layout.addWidget(self.nameedit, 0, 0)
         layout.addWidget(self.metaattributecb, 1, 0)
-        layout.addWidget(self.expressionedit, 0, 1, 1, 2)
+        layout.addWidget(self.expressionedit, 0, 1, 1, 3)
         layout.addWidget(self.attributescb, 1, 1)
         layout.addWidget(self.functionscb, 1, 2)
         layout.addWidget(self.timefunctioncb, 1, 3)
@@ -866,7 +845,6 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
     class Outputs:
         data = Output("Data", Orange.data.Table)
 
-
     want_main_area = False
 
     settingsHandler = FeatureConstructorHandler()
@@ -937,21 +915,6 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         cont.triggered.connect(
             lambda: self.addFeature(
                 ContinuousDescriptor(generate_newname("X{}"), "", 3, meta=False))
-        )
-        disc = menu.addAction("Categorical")
-        disc.triggered.connect(
-            lambda: self.addFeature(
-                DiscreteDescriptor(generate_newname("D{}"), "", (), False, meta=False))
-        )
-        string = menu.addAction("Text")
-        string.triggered.connect(
-            lambda: self.addFeature(
-                StringDescriptor(generate_newname("S{}"), "", meta=True))
-        )
-        datetime = menu.addAction("Date/Time")
-        datetime.triggered.connect(
-            lambda: self.addFeature(
-                DateTimeDescriptor(generate_newname("T{}"), "", meta=False))
         )
 
         menu.addSeparator()
@@ -1577,7 +1540,7 @@ class FeatureFunc:
 
             column_name_match_tempfunc = re.search(expresion_regular, self.expression)
 
-            #----------SI HAY FUNCION TEMPORAL----------
+            # ----------SI HAY FUNCION TEMPORAL----------
             if column_name_match_tempfunc:
                 # Iterar sobre las funciones y acumular información
                 for column_name_match_tempfunc in re.finditer(expresion_regular, self.expression):
@@ -1603,7 +1566,7 @@ class FeatureFunc:
                         tabla = column_name_match_tempfunc.group(7)
                         sd_info_list.append({'tabla': variables[tabla]})
 
-                modified_expression = modificar_expresion(self.expression)
+                modified_expression = modificar_expression(self.expression)
 
             # Iterar sobre los valores de las columnas
             for values in zip(*variables.values()):
@@ -1616,7 +1579,7 @@ class FeatureFunc:
 
                     # Actualizar el diccionario de funciones permitidas para todos los shift
                     shift_functions = {
-                        f'shift{i}': functools.partial(shift, tabla=info['tabla'], cont=cont)
+                        f'shift{i}': functools.partial(shift_function, tabla=info['tabla'], cont=cont)
                         for i, info in enumerate(shift_info_list)
                     }
                     # Actualizar el diccionario de funciones permitidas para todos los sum
@@ -1651,7 +1614,8 @@ class FeatureFunc:
                     }
 
                     # Combinar todos los diccionarios en uno solo
-                    funciones_permitidas = {**shift_functions, **sum_functions, **mean_functions, **count_functions, **min_functions, **max_functions, **sd_functions}
+                    funciones_permitidas = {**shift_functions, **sum_functions, **mean_functions, **count_functions,
+                                            **min_functions, **max_functions, **sd_functions}
 
                     # INCREMENTAR CONTADOR
                     # increment_meters(shift_info_list, sum_info_list, mean_info_list, count_info_list, min_info_list, max_info_list, sd_info_list)
