@@ -239,7 +239,13 @@ def shift(var, z, tabla=None, cont=None):  # ----FUNCIÓN SHIFT()----
     if z == 0:
         return var
 
-    nuevo_cont = (cont + z) % len(tabla)
+    nuevo_cont = (cont + z)
+
+    if nuevo_cont < 0:
+        return None
+
+    if nuevo_cont >= len(tabla):
+        return None
 
     if tabla[nuevo_cont] is None:
         return None
@@ -859,6 +865,7 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
 
     class Outputs:
         data = Output("Data", Orange.data.Table)
+
 
     want_main_area = False
 
@@ -1651,7 +1658,11 @@ class FeatureFunc:
                     cont += 1
 
                     # Utilizar la función personalizada para evaluar la expresión
-                    result = eval(modified_expression, var_dict, funciones_permitidas)
+                    try:
+                        result = eval(modified_expression, var_dict, funciones_permitidas)
+
+                    except:
+                        result = None
 
                     # TEST --> ((mean(sepal_length,-1,2)+1+sepal_length+shift(sepal_width,1)+mean(sepal_length,-1,2)+sum(petal_width,0,2)+mean(sepal_length,0,2))-shift(sepal_width,2)/2)-count(petal_width,0,4) = 18,3
                 else:
