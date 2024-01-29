@@ -2,3 +2,4 @@ TimeFeatures.egg-info/
 timefeatures/__pycache__/
 *.pyc
 build/
+*.txt
