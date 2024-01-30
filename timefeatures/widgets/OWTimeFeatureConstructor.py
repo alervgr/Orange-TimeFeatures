@@ -239,16 +239,22 @@ def sum_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN SUM()----
         return var
     nuevo_valor = 0
 
-    indices = range(z, x + 1)  # Invertir el rango si z es mayor que x
+    count = 0
+    indices = range(z, x + 1)
 
     # Sumar valores desde el índice cont + x hasta el índice cont + z, excluyendo valores nulos
     for i in indices:
         index = (cont + i)
-        if index > 0 or index <= len(tabla):
+        index = (cont + i)
+        if 0 <= index < len(tabla):
             if not math.isnan(tabla[index]):
+                count += 1
                 nuevo_valor += tabla[index]
 
-    return nuevo_valor
+    if count > 0:
+        return nuevo_valor
+    else:
+        return None
 
 
 def mean_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN MEAN()----
@@ -262,23 +268,20 @@ def mean_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN MEAN()----
     nuevo_valor = 0
     count = 0
 
-    if x <= z:
-        indices = range(x, z + 1)
-    else:
-        indices = range(z, x + 1)  # Invertir el rango si z es mayor que x
+    indices = range(z, x + 1)
 
     # Sumar valores desde el índice cont + x hasta el índice cont + z, excluyendo valores nulos
     for i in indices:
-        index = (cont + i) % len(tabla)
-        if not math.isnan(tabla[index]):
-            nuevo_valor += tabla[index]
-            count += 1
+        index = (cont + i)
+        if 0 <= index < len(tabla):
+            if not math.isnan(tabla[index]):
+                nuevo_valor += tabla[index]
+                count += 1
 
     # Calcular la media dividiendo la suma por la cantidad de valores no nulos
     if count > 0:
         media = nuevo_valor / count
         return media
-
     else:
         return None
 
@@ -293,19 +296,19 @@ def count_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN COUNT()---
     if z == x and not math.isnan(var):
         return 1
     else:
-        # Determinar el orden de los índices según los signos de x y z
-        if x <= z:
-            indices = range(x, z + 1)
-        else:
-            indices = range(z, x + 1)  # Invertir el rango si z es mayor que x
+        indices = range(z, x + 1)
 
         # Contar valores no nulos desde el índice cont + x hasta el índice cont + z
         for i in indices:
-            index = (cont + i) % len(tabla)
-            if not math.isnan(tabla[index]):
-                count += 1
+            index = (cont + i)
+            if 0 <= index < len(tabla):
+                if not math.isnan(tabla[index]):
+                    count += 1
 
-        return count
+        if count > 0:
+            return count
+        else:
+            return None
 
 
 def min_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN MIN()----
@@ -318,17 +321,14 @@ def min_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN MIN()----
     if z == x and not math.isnan(var):
         return var
     else:
-        # Determinar el orden de los índices según los signos de x y z
-        if x <= z:
-            indices = range(x, z + 1)
-        else:
-            indices = range(z, x + 1)
+        indices = range(z, x + 1)
 
         # Encontrar el valor mínimo no nulo desde el índice cont + x hasta el índice cont + z
         for i in indices:
-            index = (cont + i) % len(tabla)
-            if not math.isnan(tabla[index]):
-                min_value = min(min_value, tabla[index])
+            index = (cont + i)
+            if 0 <= index < len(tabla):
+                if not math.isnan(tabla[index]):
+                    min_value = min(min_value, tabla[index])
 
         # Si no se encuentra ningún valor no nulo, devolver None
         if min_value == float('inf'):
@@ -347,17 +347,14 @@ def max_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN MAX()----
     if z == x and not math.isnan(var):
         return var
     else:
-        # Determinar el orden de los índices según los signos de x y z
-        if x <= z:
-            indices = range(x, z + 1)
-        else:
-            indices = range(z, x + 1)
+        indices = range(z, x + 1)
 
         # Encontrar el valor máximo no nulo
         for i in indices:
-            index = (cont + i) % len(tabla)
-            if not math.isnan(tabla[index]):
-                max_value = max(max_value, tabla[index])
+            index = (cont + i)
+            if 0 <= index < len(tabla):
+                if not math.isnan(tabla[index]):
+                    max_value = max(max_value, tabla[index])
 
         # Si no se encuentra ningún valor no nulo, devolver None
         if max_value == float('-inf'):
@@ -376,17 +373,14 @@ def sd_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN SD()----
     if z == x and not np.isnan(var):
         valores.append(var)
     else:
-        # Determinar el orden de los índices según los signos de x y z
-        if x <= z:
-            indices = range(x, z + 1)
-        else:
-            indices = range(z, x + 1)
+        indices = range(z, x + 1)
 
         # Agregar valores a la lista
         for i in indices:
-            index = (cont + i) % len(tabla)
-            if not np.isnan(tabla[index]):
-                valores.append(tabla[index])
+            index = (cont + i)
+            if 0 <= index < len(tabla):
+                if not np.isnan(tabla[index]):
+                    valores.append(tabla[index])
 
     if valores:
         std_desviacion = np.std(valores)
@@ -422,11 +416,7 @@ Categorical features are passed as strings
 
 """.lstrip()
 
-    FUNCTIONS = dict(chain([(key, val) for key, val in math.__dict__.items()
-                            if not key.startswith("_")],
-                           [(key, val) for key, val in builtins.__dict__.items()
-                            if key in {"str", "float", "int", "len",
-                                       "abs", "max", "min"}]))
+    FUNCTIONS = {"abs": "", "float": "", "int": "", "pow": ""}
 
     TIME_FUNCTIONS = {"shift": "", "sum": "", "mean": "", "count": "", "min": "", "max": "", "sd": ""}
 
@@ -475,7 +465,7 @@ Categorical features are passed as strings
         self.functionscb.setModel(self.funcs_model)
 
         # ComboBox FUNCIONES TEMPORALES
-        self.time_func_model = itemmodels.PyListModelTooltip(chain(["Select a Time Function"], self.TIME_FUNCTIONS))
+        self.time_func_model = itemmodels.PyListModelTooltip(chain(["Select Time Function"], self.TIME_FUNCTIONS))
         self.time_func_model.setParent(self)
         self.timefunctioncb = ComboBoxSearch(
             minimumContentsLength=16,
@@ -844,6 +834,7 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
 
     class Outputs:
         data = Output("Data", Orange.data.Table)
+        expressions = Output("Expressions", Orange.data.Table)
 
     want_main_area = False
 
@@ -1123,13 +1114,48 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         self.start(run, self.data, desc, self.expressions_with_values)
 
     def on_done(self, result: "Result") -> None:
-        data, attrs = result.data, result.attributes
+        data, attrs, desc = result.data, result.attributes, result.desc
         disc_attrs_not_ok = self.check_attrs_values(
             [var for var in attrs if var.is_discrete], data)
         if disc_attrs_not_ok:
             self.Error.more_values_needed(disc_attrs_not_ok)
             return
 
+        expresiones = []
+        variables = []
+
+        for i in range(0, len(data.domain) - 1):
+            variables.append(str(data.domain[i].name))
+
+        for expre in desc:
+            expresiones.append(str(expre.expression))
+
+        variable_column = Orange.data.DiscreteVariable(name="Variable", values=variables)
+        expresion_column = Orange.data.DiscreteVariable(name="Expresion", values=expresiones)
+
+        # Creo el dominio
+        domain = Orange.data.Domain([variable_column, expresion_column])
+
+        new_instances = []
+        relacion_variables_expresiones = {}
+
+        # Le doy la vuelta a las expresiones para que cuadren con las variables
+        expresiones_r = list(reversed(expresiones))
+
+        # Asignar a cada variable su expresión correspondiente
+        for i, variable in enumerate(reversed(variables)):
+            if i < len(expresiones):
+                relacion_variables_expresiones[variable] = expresiones_r[i]
+            else:
+                relacion_variables_expresiones[variable] = None
+
+        for variable, expresion in relacion_variables_expresiones.items():
+            new_instance = Orange.data.Instance(domain, [variable, expresion])
+            new_instances.append(new_instance)
+
+        tabla_config = Orange.data.Table(domain, new_instances)
+
+        self.Outputs.expressions.send(tabla_config)
         self.Outputs.data.send(data)
 
     def on_exception(self, ex: Exception):
@@ -1225,6 +1251,7 @@ class Result:
     data: Table
     attributes: List[Variable]
     metas: List[Variable]
+    desc: StringDescriptor
 
 
 def run(data: Table, desc, use_values, task: TaskState) -> Result:
@@ -1247,8 +1274,7 @@ def run(data: Table, desc, use_values, task: TaskState) -> Result:
     finally:
         for variable in new_variables:
             variable.compute_value.mask_exceptions = True
-    print(new_variables)
-    return Result(data, new_variables, new_metas)
+    return Result(data, new_variables, new_metas, desc)
 
 
 def validate_exp(exp):
