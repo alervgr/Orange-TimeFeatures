@@ -1157,6 +1157,7 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
 
         self.Outputs.expressions.send(tabla_config)
         self.Outputs.data.send(data)
+        # self.setData(data) Funciona pero se pierden las variables a aplastar con data.
 
     def on_exception(self, ex: Exception):
         log = logging.getLogger(__name__)
