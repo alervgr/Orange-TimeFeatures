@@ -2,30 +2,19 @@ import re
 from functools import wraps
 
 import Orange
-import networkx.classes
-import scipy as sp
 from Orange.widgets.widget import OWWidget
 from Orange.widgets.utils.concurrent import ConcurrentWidgetMixin
-import string
-from collections import defaultdict
 
 import numpy as np
-
-from AnyQt.QtCore import Qt
-from AnyQt.QtWidgets import QSpinBox
+from scipy import sparse as sp
 
 from Orange.data import Table, Domain, StringVariable
 from Orange.widgets import gui, widget, settings
 from Orange.widgets.widget import Output, Msg
 from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QHBoxLayout
-from networkx import Graph, DiGraph
 
 from orangecontrib.network import Network
-from orangecontrib.network.network.base import Edges
-# __all__ is defined, pylint: disable=wildcard-import, unused-wildcard-import
-from orangecontrib.network.network.generate import *
 from orangewidget.utils.signals import Input
-
 
 def from_row_col(f):
     @wraps(f)
@@ -34,50 +23,45 @@ def from_row_col(f):
 
         expresion_regular = r'shift\(([^,]+),[-\d]+\)|sum\(([^,]+),[-\d]+,[-\d]+\)|mean\(([^,]+),[-\d]+,' \
                             r'[-\d]+\)|count\(([^,]+),[-\d]+,[-\d]+\)|min\(([^,]+),[-\d]+,[-\d]+\)|max\(([^,]+),' \
-                            r'[-\d]+,[-\d]+\)|sd\(([^,]+),[-\d]+,[-\d]+\)'
+                            r'[-\d]+,[-\d]+\)|sd\(([^,]+),[-\d]+,[-\d]+\)|([^\s,]+)'
 
-        coincidencias = {}
+        relaciones = {}
 
         for datos in data:
+            variable = str(datos[0])
+            variable = variable.replace(" ", "_").replace("-", "_")
             if datos[1] is not None:
-                print(datos[1])
-                for column_name_match_tempfunc in re.finditer(expresion_regular, str(datos[1])):
-                    if column_name_match_tempfunc.group(1):
-                        tabla = column_name_match_tempfunc.group(1)
-                        coincidencias[str(datos[0])] = tabla
-                    elif column_name_match_tempfunc.group(2):
-                        tabla = column_name_match_tempfunc.group(2)
-                        coincidencias[str(datos[0])] = tabla
-                    elif column_name_match_tempfunc.group(3):
-                        tabla = column_name_match_tempfunc.group(3)
-                        coincidencias[str(datos[0])] = tabla
-                    elif column_name_match_tempfunc.group(4):
-                        tabla = column_name_match_tempfunc.group(4)
-                        coincidencias[str(datos[0])] = tabla
-                    elif column_name_match_tempfunc.group(5):
-                        tabla = column_name_match_tempfunc.group(5)
-                        coincidencias[str(datos[0])] = tabla
-                    elif column_name_match_tempfunc.group(6):
-                        tabla = column_name_match_tempfunc.group(6)
-                        coincidencias[str(datos[0])] = tabla
-                    elif column_name_match_tempfunc.group(7):
-                        tabla = column_name_match_tempfunc.group(7)
-                        coincidencias[str(datos[0])] = tabla
+                relaciones[variable] = []
+                for match in re.finditer(expresion_regular, str(datos[1])):
+                    for group in match.groups():
+                        if group:
+                            relaciones[variable].append(group)
 
-        print(coincidencias)
+        print(relaciones)
 
-        n = n[0] if n else max(np.max(row), np.max(col)) + 1
-        edges = sp.csr_matrix((np.ones(len(row)), (row, col)), shape=(n, n))
-        return Network(
-            range(n), edges,
-            name=f"{f.__name__}{args}".replace(",)", ")"))
+        row_edges, col_edges = [], []
+        for i, variable in enumerate(relaciones):
+            for related_var in relaciones[variable]:
+                if related_var in relaciones:
+                    # Agrega la variable actual (variable) como nodo de origen
+                    row_edges.append(i)
+                    # Agrega la variable relacionada (related_var) como nodo de destino
+                    j = list(relaciones.keys()).index(related_var)
+                    col_edges.append(j)
+
+        nombres_variables = list(relaciones.keys())
+        nombres_variables = np.array(nombres_variables).reshape(-1, 1)
+
+        n = len(relaciones)
+        edges = sp.csr_matrix((np.ones(len(row_edges)), (row_edges, col_edges)), shape=(n, n))
+        return Network(range(n), edges, name=f"{f.__name__}{args}"), nombres_variables
 
     return wrapped
 
 
 @from_row_col
-def grafo(n, data):
-    return np.arange(n - 1), np.arange(n - 1) + 1, n, data
+def grafo(n_nodos, data=None):
+    return np.arange(len(data)), np.arange(len(data)), data
 
 
 class OWTFGraphGenerator(OWWidget, ConcurrentWidgetMixin):
@@ -144,13 +128,16 @@ class OWTFGraphGenerator(OWWidget, ConcurrentWidgetMixin):
 
         self.Error.generation_error.clear()
         try:
-            network = func(n_nodos, self.data)
+            network, nombres_variables = func(n_nodos, data=self.data)
         except ValueError as exc:
             self.Error.generation_error(exc)
             network = None
         else:
             n = len(network.nodes)
-            network.nodes = Table(Domain([], [], [StringVariable("id")]),
+            network.nodes = Table(Domain([], [], [StringVariable("nombre_var")]),
                                   np.zeros((n, 0)), np.zeros((n, 0)),
                                   np.arange(n).reshape((n, 1)))
+
+            network.nodes[:, "nombre_var"] = nombres_variables
+
         self.Outputs.network.send(network)
