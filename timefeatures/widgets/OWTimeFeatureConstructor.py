@@ -245,7 +245,6 @@ def sum_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN SUM()----
     # Sumar valores desde el índice cont + x hasta el índice cont + z, excluyendo valores nulos
     for i in indices:
         index = (cont + i)
-        index = (cont + i)
         if 0 <= index < len(tabla):
             if not math.isnan(tabla[index]):
                 count += 1
