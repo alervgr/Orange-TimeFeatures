@@ -16,15 +16,23 @@ from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QHBoxLayout
 from orangecontrib.network import Network
 from orangewidget.utils.signals import Input
 
+
 def from_row_col(f):
     @wraps(f)
     def wrapped(*args, data):
         row, col, *n, data = f(*args, data)
 
-        expresion_regular = r'shift\(([^,]+),[-\d]+\)|sum\(([^,]+),[-\d]+,[-\d]+\)|mean\(([^,]+),[-\d]+,' \
-                            r'[-\d]+\)|count\(([^,]+),[-\d]+,[-\d]+\)|min\(([^,]+),[-\d]+,[-\d]+\)|max\(([^,]+),' \
-                            r'[-\d]+,[-\d]+\)|sd\(([^,]+),[-\d]+,[-\d]+\)|([^\s,]+)'
+        variables = []
 
+        for variable in data:
+            var_arreglada = str(variable[0])
+            var_arreglada = var_arreglada.replace(" ", "_").replace("-", "_")
+            variables.append(var_arreglada)
+
+        expresion_regular = r'\b(' + '|'.join(map(re.escape, variables)) + r')\b'
+
+        print(expresion_regular)
+        print("------------------------------------")
         relaciones = {}
 
         for datos in data:
@@ -43,7 +51,7 @@ def from_row_col(f):
         for i, variable in enumerate(relaciones):
             for related_var in relaciones[variable]:
                 if related_var in relaciones:
-                    # Agrega la variable actual (variable) como nodo de origen
+                    # Agrega la variable actual como nodo origen
                     row_edges.append(i)
                     # Agrega la variable relacionada (related_var) como nodo de destino
                     j = list(relaciones.keys()).index(related_var)
@@ -54,6 +62,7 @@ def from_row_col(f):
 
         n = len(relaciones)
         edges = sp.csr_matrix((np.ones(len(row_edges)), (row_edges, col_edges)), shape=(n, n))
+        print(edges)
         return Network(range(n), edges, name=f"{f.__name__}{args}"), nombres_variables
 
     return wrapped
