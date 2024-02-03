@@ -97,8 +97,10 @@ def make_variable(descriptor, compute_value):
         raise TypeError
 
 
+# Función para modificar la expresión original
+# para que pueda ser leida por eval()
 def modificar_expression(expression):
-    # Encontrar todas las coincidencias de shift y sum en la expresión
+    # Encontrar todas las coincidencias con las funciones temporales y almacenarlas
     matches_shift = list(re.finditer(r'shift\(([^,]+),([-+]?\d+)\)', expression))
     matches_sum = list(re.finditer(r'sum\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expression))
     matches_mean = list(re.finditer(r'mean\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expression))
@@ -107,7 +109,7 @@ def modificar_expression(expression):
     matches_max = list(re.finditer(r'max\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expression))
     matches_sd = list(re.finditer(r'sd\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expression))
 
-    # Variable para contar matches
+    # Variables para contar matches
     match_counter_shift = 0
     match_counter_sum = 0
     match_counter_mean = 0
@@ -130,16 +132,13 @@ def modificar_expression(expression):
 
         match_counter_shift += 1
 
-    # Iterar sobre todas las coincidencias de sum y cambiar la expresión
     for match in matches_sum:
         variable_name = match.group(1)
         sum_value1 = match.group(2)
         sum_value2 = match.group(3)
 
-        # Construir la nueva expresión con el número incremental
         new_sum = f'sum{match_counter_sum}({variable_name},{sum_value1},{sum_value2})'
 
-        # Reemplazar solo la coincidencia actual en la expresión
         modified_expression = modified_expression.replace(match.group(0), new_sum, 1)
 
         match_counter_sum += 1
@@ -149,10 +148,8 @@ def modificar_expression(expression):
         mean_value1 = match.group(2)
         mean_value2 = match.group(3)
 
-        # Construir la nueva expresión con el número incremental
         new_mean = f'mean{match_counter_sum}({variable_name},{mean_value1},{mean_value2})'
 
-        # Reemplazar solo la coincidencia actual en la expresión
         modified_expression = modified_expression.replace(match.group(0), new_mean, 1)
 
         match_counter_mean += 1
@@ -162,10 +159,8 @@ def modificar_expression(expression):
         count_value1 = match.group(2)
         count_value2 = match.group(3)
 
-        # Construir la nueva expresión con el número incremental
         new_count = f'count{match_counter_count}({variable_name},{count_value1},{count_value2})'
 
-        # Reemplazar solo la coincidencia actual en la expresión
         modified_expression = modified_expression.replace(match.group(0), new_count, 1)
 
         match_counter_count += 1
@@ -175,10 +170,8 @@ def modificar_expression(expression):
         min_value1 = match.group(2)
         min_value2 = match.group(3)
 
-        # Construir la nueva expresión con el número incremental
         new_min = f'min{match_counter_min}({variable_name},{min_value1},{min_value2})'
 
-        # Reemplazar solo la coincidencia actual en la expresión
         modified_expression = modified_expression.replace(match.group(0), new_min, 1)
 
         match_counter_min += 1
@@ -188,10 +181,8 @@ def modificar_expression(expression):
         max_value1 = match.group(2)
         max_value2 = match.group(3)
 
-        # Construir la nueva expresión con el número incremental
         new_max = f'max{match_counter_max}({variable_name},{max_value1},{max_value2})'
 
-        # Reemplazar solo la coincidencia actual en la expresión
         modified_expression = modified_expression.replace(match.group(0), new_max, 1)
 
         match_counter_max += 1
@@ -201,10 +192,8 @@ def modificar_expression(expression):
         sd_value1 = match.group(2)
         sd_value2 = match.group(3)
 
-        # Construir la nueva expresión con el número incremental
         new_sd = f'sd{match_counter_sd}({variable_name},{sd_value1},{sd_value2})'
 
-        # Reemplazar solo la coincidencia actual en la expresión
         modified_expression = modified_expression.replace(match.group(0), new_sd, 1)
 
         match_counter_sd += 1
@@ -219,7 +208,7 @@ def shift_function(var, z, tabla=None, cont=None):  # ----FUNCIÓN SHIFT()----
 
     nuevo_cont = (cont + z)
 
-    if nuevo_cont < 0 or nuevo_cont >= len(tabla):
+    if nuevo_cont < 0 or nuevo_cont >= len(tabla):  # Si nuevo_cont excede los límites de la tabla
         return None
 
     if tabla[nuevo_cont] is None:
@@ -237,6 +226,7 @@ def sum_function(var, z, x, tabla=None, cont=None):  # ----FUNCIÓN SUM()----
 
     if z == x:
         return var
+
     nuevo_valor = 0
 
     count = 0
@@ -1544,7 +1534,7 @@ class FeatureFunc:
             variables = {}
             list_res = []
 
-            # Lista de variables por funcion
+            # Lista de variables por función
             shift_info_list = []
             sum_info_list = []
             mean_info_list = []
@@ -1643,18 +1633,16 @@ class FeatureFunc:
                     funciones_permitidas = {**shift_functions, **sum_functions, **mean_functions, **count_functions,
                                             **min_functions, **max_functions, **sd_functions}
 
-                    # INCREMENTAR CONTADOR
-                    # increment_meters(shift_info_list, sum_info_list, mean_info_list, count_info_list, min_info_list, max_info_list, sd_info_list)
+                    # Incrementar contador de todas las funciones temporales
                     cont += 1
 
-                    # Utilizar la función personalizada para evaluar la expresión
+                    # Utilizar la expresión modificada para evaluar la expresión
                     try:
                         result = eval(modified_expression, var_dict, funciones_permitidas)
-
+                    # Las operaciones con NaN serán NaN
                     except:
                         result = None
 
-                    # TEST --> ((mean(sepal_length,-1,2)+1+sepal_length+shift(sepal_width,1)+mean(sepal_length,-1,2)+sum(petal_width,0,2)+mean(sepal_length,0,2))-shift(sepal_width,2)/2)-count(petal_width,0,4) = 18,3
                 else:
                     # --------------------NO FUNCION TEMPORAL-----------------------
                     result = eval(self.expression, var_dict)
