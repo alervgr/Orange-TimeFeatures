@@ -13,15 +13,14 @@ import math
 import random
 import logging
 import ast
-import types
 import unicodedata
 
 from concurrent.futures import CancelledError
 from dataclasses import dataclass
 from traceback import format_exception_only
 from collections import namedtuple, OrderedDict
-from itertools import chain, count, starmap
-from typing import List, Dict, Any, Mapping, Optional
+from itertools import chain, count
+from typing import List, Dict, Mapping, Optional
 
 import numpy as np
 
@@ -43,7 +42,7 @@ from Orange.data.util import get_unique_names
 from Orange.widgets import gui
 from Orange.widgets.settings import ContextSetting, DomainContextHandler
 from Orange.widgets.utils import (
-    itemmodels, vartype, ftry, unique_everseen as unique
+    itemmodels, vartype, unique_everseen as unique
 )
 from Orange.widgets.utils.sql import check_sql_input
 from Orange.widgets import report

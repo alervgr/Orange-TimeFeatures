@@ -20,7 +20,7 @@ from orangewidget.utils.signals import Input
 def from_row_col(f):
     @wraps(f)
     def wrapped(*args, data):
-        row, col, *n, data = f(*args, data)
+        data = f(*args, data)
 
         variables = []
 
@@ -42,7 +42,7 @@ def from_row_col(f):
                 relaciones[variable] = []
                 for match in re.finditer(expresion_regular, str(datos[1])):
                     for group in match.groups():
-                        if group:
+                        if group and group not in relaciones[variable]:
                             relaciones[variable].append(group)
 
         print(relaciones)
@@ -69,8 +69,8 @@ def from_row_col(f):
 
 
 @from_row_col
-def grafo(n_nodos, data=None):
-    return np.arange(len(data)), np.arange(len(data)), data
+def grafo(data=None):
+    return data
 
 
 class OWTFGraphGenerator(OWWidget, ConcurrentWidgetMixin):
@@ -132,12 +132,11 @@ class OWTFGraphGenerator(OWWidget, ConcurrentWidgetMixin):
             self.error("No data provided.")
             return
 
-        n_nodos = [len(self.data.get_column(self.data.domain[0]))]
         func = self.GRAPH_TYPES[self.graph_type]
 
         self.Error.generation_error.clear()
         try:
-            network, nombres_variables = func(n_nodos, data=self.data)
+            network, nombres_variables = func(data=self.data)
         except ValueError as exc:
             self.Error.generation_error(exc)
             network = None
