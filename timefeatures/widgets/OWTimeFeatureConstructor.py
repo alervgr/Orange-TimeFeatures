@@ -924,8 +924,27 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         toplayout.addLayout(buttonlayout, 0)
         toplayout.addWidget(self.editorstack, 10)
 
-        # Layout for the list view
+
+        # Layout for the list view (LA MIA)
         layout = QVBoxLayout(spacing=1)
+
+        self.featureModelTime = DescriptorModel(parent=self)
+
+        self.featureviewTime = QListView(
+            minimumWidth=200, minimumHeight=50,
+            sizePolicy=QSizePolicy(QSizePolicy.Minimum,
+                                   QSizePolicy.MinimumExpanding)
+        )
+
+        self.featureviewTime.setItemDelegate(FeatureItemDelegate(self))
+        self.featureviewTime.setModel(self.featureModelTime)
+        self.featureviewTime.selectionModel().selectionChanged.connect(
+            self._on_selectedVariableChanged
+        )
+
+        layout.addWidget(self.featureviewTime)
+
+        # Layout for the list view
         self.featuremodel = DescriptorModel(parent=self)
 
         self.featureview = QListView(
@@ -975,6 +994,7 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         selmodel.selectionChanged.disconnect(self._on_selectedVariableChanged)
 
         self.featuremodel[:] = list(self.descriptors)
+        self.featureModelTime[:] = list(self.descriptors)
         self.setCurrentIndex(self.currentIndex)
 
         selmodel.selectionChanged.connect(self._on_selectedVariableChanged)
@@ -986,6 +1006,13 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
 
     def _on_selectedVariableChanged(self, selected, *_):
         index = selected_row(self.featureview)
+        if index is not None:
+            self.setCurrentIndex(index)
+        else:
+            self.setCurrentIndex(-1)
+
+    def _on_selectedVariableChangedTime(self, selected, *_):
+        index = selected_row(self.featureModelTime)
         if index is not None:
             self.setCurrentIndex(index)
         else:
@@ -1031,6 +1058,11 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
 
         self.data = data
         self.expressions_with_values = False
+
+        if len(list(self.featureModelTime)) == 0:
+            self.featureModelTime[:] = list(self.descriptors)
+        else:
+            self.featureModelTime[:].append(list(self.descriptors)[0])
 
         self.descriptors = []
         self.currentIndex = -1
@@ -1172,7 +1204,7 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
 
         tabla_config = Orange.data.Table(domain, new_instances)
 
-        # self.setData(data) Funciona pero se pierden las variables a aplastar con data.
+        self.setData(data) # Funciona pero se pierden las variables a aplastar con data.
         self.Outputs.expressions.send(tabla_config)
         self.Outputs.data.send(data)
 
