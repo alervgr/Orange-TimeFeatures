@@ -1,7 +1,7 @@
 DESCRIPTION = "Time features tools for Orange."
 
-BACKGROUND = "#C0FF97"
+BACKGROUND = "#5bcebf"
 
-ICON = "icons/timefeature.svg"
+ICON = "icons/timefeature-xs.svg"
 
 

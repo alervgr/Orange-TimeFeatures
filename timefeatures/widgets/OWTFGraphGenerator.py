@@ -1,3 +1,4 @@
+import math
 import re
 from functools import wraps
 
@@ -8,7 +9,7 @@ from Orange.widgets.utils.concurrent import ConcurrentWidgetMixin
 import numpy as np
 from scipy import sparse as sp
 
-from Orange.data import Table, Domain, StringVariable
+from Orange.data import Table, Domain, StringVariable, DiscreteVariable
 from Orange.widgets import gui, widget, settings
 from Orange.widgets.widget import Output, Msg
 from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QHBoxLayout
@@ -23,6 +24,7 @@ def from_row_col(f):
         data = f(*args, data)
 
         variables = []
+        tipo_var = []
 
         for variable in data:
             var_arreglada = str(variable[0])
@@ -38,14 +40,18 @@ def from_row_col(f):
         for datos in data:
             variable = str(datos[0])
             variable = variable.replace(" ", "_").replace("-", "_")
-            if datos[1] is not None:
-                relaciones[variable] = []
-                for match in re.finditer(expresion_regular, str(datos[1])):
-                    for group in match.groups():
-                        if group and group not in relaciones[variable]:
-                            relaciones[variable].append(group)
+            if not math.isnan(datos[1]):
+                tipo_var.append(0)
+            else:
+                tipo_var.append(1)
+            relaciones[variable] = []
+            for match in re.finditer(expresion_regular, str(datos[1])):
+                for group in match.groups():
+                    if group and group not in relaciones[variable]:
+                        relaciones[variable].append(group)
 
         print(relaciones)
+        print(tipo_var)
 
         row_edges, col_edges = [], []
         for i, variable in enumerate(relaciones):
@@ -60,10 +66,12 @@ def from_row_col(f):
         nombres_variables = list(relaciones.keys())
         nombres_variables = np.array(nombres_variables).reshape(-1, 1)
 
+        tipo_var_reshaped = np.array(tipo_var).reshape(-1, 1)
+
         n = len(relaciones)
         edges = sp.csr_matrix((np.ones(len(row_edges)), (row_edges, col_edges)), shape=(n, n))
         print(edges)
-        return Network(range(n), edges, name=f"{f.__name__}{args}"), nombres_variables
+        return Network(range(n), edges, name=f"{f.__name__}{args}"), nombres_variables, tipo_var_reshaped
 
     return wrapped
 
@@ -136,16 +144,17 @@ class OWTFGraphGenerator(OWWidget, ConcurrentWidgetMixin):
 
         self.Error.generation_error.clear()
         try:
-            network, nombres_variables = func(data=self.data)
+            network, nombres_variables, tipo_var_reshaped = func(data=self.data)
         except ValueError as exc:
             self.Error.generation_error(exc)
             network = None
         else:
             n = len(network.nodes)
-            network.nodes = Table(Domain([], [], [StringVariable("nombre_var")]),
+            network.nodes = Table(Domain([], [], [StringVariable("nombre_var"), DiscreteVariable("tipo_var", values=["Derived", "Original"])]),
                                   np.zeros((n, 0)), np.zeros((n, 0)),
-                                  np.arange(n).reshape((n, 1)))
+                                  np.arange(2*n).reshape((n, 2)))
 
             network.nodes[:, "nombre_var"] = nombres_variables
+            network.nodes[:, "tipo_var"] = tipo_var_reshaped
 
         self.Outputs.network.send(network)

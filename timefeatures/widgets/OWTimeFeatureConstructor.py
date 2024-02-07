@@ -909,8 +909,16 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         )
         self.removebutton.clicked.connect(self.removeSelectedFeature)
 
+        self.resetbutton = QPushButton(         # Boton para resetear el nodo
+            "Reset", toolTip="Reset node",
+            minimumWidth=120
+        )
+        self.resetbutton.clicked.connect(self.reset_domain)
+
+
         buttonlayout.addWidget(self.addbutton)
         buttonlayout.addWidget(self.removebutton)
+        buttonlayout.addWidget(self.resetbutton)
         buttonlayout.addStretch(10)
 
         toplayout.addLayout(buttonlayout, 0)
@@ -954,6 +962,27 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         self.editorstack.setEnabled(index >= 0)
         self.duplicateaction.setEnabled(index >= 0)
         self.removebutton.setEnabled(index >= 0)
+
+    def reset_domain(self):
+
+        self.expressions_with_values = False
+
+        self.descriptors = []
+        self.currentIndex = -1
+
+        # disconnect from the selection model while reseting the model
+        selmodel = self.featureview.selectionModel()
+        selmodel.selectionChanged.disconnect(self._on_selectedVariableChanged)
+
+        self.featuremodel[:] = list(self.descriptors)
+        self.setCurrentIndex(self.currentIndex)
+
+        selmodel.selectionChanged.connect(self._on_selectedVariableChanged)
+        self.fix_button.setHidden(not self.expressions_with_values)
+        self.editorstack.setEnabled(self.currentIndex >= 0)
+
+        self.apply()
+
 
     def _on_selectedVariableChanged(self, selected, *_):
         index = selected_row(self.featureview)
@@ -1143,9 +1172,10 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
 
         tabla_config = Orange.data.Table(domain, new_instances)
 
+        # self.setData(data) Funciona pero se pierden las variables a aplastar con data.
         self.Outputs.expressions.send(tabla_config)
         self.Outputs.data.send(data)
-        # self.setData(data) Funciona pero se pierden las variables a aplastar con data.
+
 
     def on_exception(self, ex: Exception):
         log = logging.getLogger(__name__)
