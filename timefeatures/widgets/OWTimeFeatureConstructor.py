@@ -916,7 +916,6 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         )
         self.resetbutton.clicked.connect(self.reset_domain)
 
-
         buttonlayout.addWidget(self.addbutton)
         buttonlayout.addWidget(self.removebutton)
         buttonlayout.addWidget(self.resetbutton)
@@ -1066,10 +1065,12 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
 
         self.data = data
         self.expressions_with_values = False
-
+        print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
         # Añado el descriptors a la nueva lista de variables.
         if len(self.descriptors) > 0:
-            self.addFeatureTime(self.descriptors.pop())
+            for desc in self.descriptors:
+                print("Hola")
+                self.addFeatureTime(desc)
 
         self.descriptors = []
         self.currentIndex = -1
