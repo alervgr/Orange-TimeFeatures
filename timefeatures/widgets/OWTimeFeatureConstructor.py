@@ -852,6 +852,7 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         super().__init__()
         ConcurrentWidgetMixin.__init__(self)
         self.data = None
+        self.dataOriginal = None
         self.editors = {}
 
         box = gui.vBox(self.controlArea, "Variable Definitions")
@@ -986,6 +987,9 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
 
         self.expressions_with_values = False
 
+        # Si hay datos originales los sustituye para que quede igual.
+        if self.dataOriginal is not None:
+            self.data = self.dataOriginal
         self.descriptors = []
         self.currentIndex = -1
 
@@ -993,6 +997,7 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         selmodel = self.featureview.selectionModel()
         selmodel.selectionChanged.disconnect(self._on_selectedVariableChanged)
 
+        # Listas de variables a cero.
         self.featuremodel[:] = list(self.descriptors)
         self.featureModelTime[:] = list(self.descriptors)
         self.setCurrentIndex(self.currentIndex)
@@ -1054,20 +1059,20 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
     @check_sql_input
     def setData(self, data=None):
         """Set the input dataset."""
-        self.closeContext()
+
+        # Guardo los datos originales para poder hacer el reset.
+        if self.dataOriginal is None:
+            self.dataOriginal = data
 
         self.data = data
         self.expressions_with_values = False
 
-        if len(list(self.featureModelTime)) == 0:
-            self.featureModelTime[:] = list(self.descriptors)
-        else:
-            self.featureModelTime[:].append(list(self.descriptors)[0])
+        # Añado el descriptors a la nueva lista de variables.
+        if len(self.descriptors) > 0:
+            self.addFeatureTime(self.descriptors.pop())
 
         self.descriptors = []
         self.currentIndex = -1
-        if self.data is not None:
-            self.openContext(data)
 
         # disconnect from the selection model while reseting the model
         selmodel = self.featureview.selectionModel()
@@ -1098,6 +1103,9 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         editor = self.editorstack.currentWidget()
         editor.nameedit.setFocus()
         editor.nameedit.selectAll()
+
+    def addFeatureTime(self, descriptor):
+        self.featureModelTime.append(descriptor)
 
     def removeFeature(self, index):
         del self.featuremodel[index]
@@ -1176,7 +1184,7 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         for i in range(0, len(data.domain) - 1):
             variables.append(str(data.domain[i].name))
 
-        for expre in desc:
+        for expre in self.featureModelTime:
             expresiones.append(str(expre.expression))
 
         variable_column = Orange.data.DiscreteVariable(name="Variable", values=variables)
@@ -1194,6 +1202,8 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         # Asignar a cada variable su expresión correspondiente
         for i, variable in enumerate(reversed(variables)):
             if i < len(expresiones):
+                print(expresiones_r[i])
+                print(variable)
                 relacion_variables_expresiones[variable] = expresiones_r[i]
             else:
                 relacion_variables_expresiones[variable] = None

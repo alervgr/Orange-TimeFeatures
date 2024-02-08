@@ -134,6 +134,7 @@ class OWTFGraphGenerator(OWWidget, ConcurrentWidgetMixin):
 
         self.data = data
         self.btn_generate.setEnabled(bool(self.data))
+        self.generate()
 
     def generate(self):
         if self.data is None:
