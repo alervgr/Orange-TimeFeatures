@@ -112,7 +112,7 @@ class OWTFGraphGenerator(OWWidget, ConcurrentWidgetMixin):
         ConcurrentWidgetMixin.__init__(self)
         self.data = None
 
-        box = gui.vBox(self.controlArea, "Generador de grafos")
+        box = gui.vBox(self.controlArea, "Graph generator")
 
         toplayout = QHBoxLayout()
         toplayout.setContentsMargins(0, 0, 0, 0)

@@ -924,9 +924,12 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         toplayout.addLayout(buttonlayout, 0)
         toplayout.addWidget(self.editorstack, 10)
 
-
         # Layout for the list view (LA MIA)
-        layout = QVBoxLayout(spacing=1)
+
+        layoutA = QGridLayout()
+        layoutA.setSpacing(2)
+
+        gui.widgetBox(self.controlArea, orientation=layoutA, box='Variables generated')
 
         self.featureModelTime = DescriptorModel(parent=self)
 
@@ -942,9 +945,15 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
             self._on_selectedVariableChanged
         )
 
-        layout.addWidget(self.featureviewTime)
+        layoutA.addWidget(self.featureviewTime)
 
         # Layout for the list view
+
+        layoutB = QGridLayout()
+        layoutB.setSpacing(2)
+
+        gui.widgetBox(self.controlArea, orientation=layoutB, box='Variables to generate')
+
         self.featuremodel = DescriptorModel(parent=self)
 
         self.featureview = QListView(
@@ -959,9 +968,10 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
             self._on_selectedVariableChanged
         )
 
-        layout.addWidget(self.featureview)
+        layoutB.addWidget(self.featureview)
 
-        box.layout().addLayout(layout, 1)
+        box.layout().addLayout(layoutA, 1)
+        box.layout().addLayout(layoutB, 1)
 
         self.fix_button = gui.button(
             self.buttonsArea, self, "Upgrade Expressions",
@@ -1065,11 +1075,10 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
 
         self.data = data
         self.expressions_with_values = False
-        print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+
         # Añado el descriptors a la nueva lista de variables.
         if len(self.descriptors) > 0:
             for desc in self.descriptors:
-                print("Hola")
                 self.addFeatureTime(desc)
 
         self.descriptors = []
