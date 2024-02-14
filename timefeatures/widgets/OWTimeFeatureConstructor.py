@@ -1176,6 +1176,7 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         if self.data is None:
             return
 
+        self.createConfigTable()
         desc = list(self.featuremodel)
         desc = self._validate_descriptors(desc)
         self.start(run, self.data, desc, self.expressions_with_values)
@@ -1188,11 +1189,16 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
             self.Error.more_values_needed(disc_attrs_not_ok)
             return
 
+        self.setData(data) # Funciona pero se pierden las variables a aplastar con data.
+        self.Outputs.data.send(data)
+
+    def createConfigTable(self):
+
         expresiones = []
         variables = []
 
-        for i in range(0, len(data.domain) - 1):
-            variables.append(str(data.domain[i].name))
+        for i in range(0, len(self.data.domain) - 1):
+            variables.append(str(self.data.domain[i].name))
 
         for expre in self.featureModelTime:
             expresiones.append(str(expre.expression))
@@ -1224,9 +1230,7 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
 
         tabla_config = Orange.data.Table(domain, new_instances)
 
-        self.setData(data) # Funciona pero se pierden las variables a aplastar con data.
         self.Outputs.expressions.send(tabla_config)
-        self.Outputs.data.send(data)
 
 
     def on_exception(self, ex: Exception):
