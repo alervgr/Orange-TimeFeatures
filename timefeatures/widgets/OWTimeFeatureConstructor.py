@@ -1206,16 +1206,19 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         for expre in self.featureModelTime:
             expresiones.append(str(expre.expression))
 
-        for i in range(0, len(self.data.domain) - (1+cont)):
-            variables.append(str(self.data.domain[i].name))
+        for i in range(0, len(self.data.domain)):
+            if cont > 0:
+                i -= cont
+            if str(self.data.domain.class_var) != str(self.data.domain[i].name):
+                variables.append(str(self.data.domain[i].name))
 
         for metas in self.featureModelTime:
             if metas.meta:
                 variables.append(str(metas.name))
+                variables.pop(0)
 
         print("----------------------")
         print(variables)
-        print(list(self.featureModelTime))
         print(expresiones)
         print("----------------------")
 
@@ -1234,8 +1237,6 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         # Asignar a cada variable su expresión correspondiente
         for i, variable in enumerate(reversed(variables)):
             if i < len(expresiones):
-                print(expresiones_r[i])
-                print(variable)
                 relacion_variables_expresiones[variable] = expresiones_r[i]
             else:
                 relacion_variables_expresiones[variable] = None
