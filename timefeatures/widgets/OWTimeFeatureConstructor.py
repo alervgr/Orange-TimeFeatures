@@ -1198,23 +1198,34 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         expresiones = []
         variables = []
         cont = 0
+        contMetasOriginales = 0    # Variable para contar las metas del dataset.
 
-        for feature in self.featureModelTime:
+        for feature in self.featureModelTime:       # Cuento las variables meta que existen.
             if feature.meta:
                 cont += 1
 
-        for expre in self.featureModelTime:
-            expresiones.append(str(expre.expression))
+        for expre in self.featureModelTime:     # Guardo las expresiones de los variables que no son meta.
+            if not expre.meta:
+                expresiones.append(str(expre.expression))
 
-        for i in range(0, len(self.data.domain)):
-            if cont > 0:
+        for i in range(0, len(self.data.domain)):       # Bucle para obtener las variables de la tabla de configuración.
+
+            if contMetasOriginales == 0:        # Si el dataset tiene metas, las tendrá en cuenta.
+                contMetasOriginales += len(self.data.domain.metas)
+                cont = contMetasOriginales
+
+            if cont > 0:        # No se tendrá en cuenta las metas a la hora de añadir las variables.
                 i -= cont
-            if str(self.data.domain.class_var) != str(self.data.domain[i].name):
+            if self.data.domain.class_var is not None:      # Si tiene class_var lo ignorará.
+                if str(self.data.domain.class_var) != str(self.data.domain[i].name):
+                    variables.append(str(self.data.domain[i].name))
+            else:
                 variables.append(str(self.data.domain[i].name))
 
-        for metas in self.featureModelTime:
+        for metas in self.featureModelTime:     # En este bucle tratamos las variables meta por separado con sus expresiones.
             if metas.meta:
                 variables.append(str(metas.name))
+                expresiones.append(str(metas.expression))
                 variables.pop(0)
 
         print("----------------------")
@@ -1248,7 +1259,6 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         tabla_config = Orange.data.Table(domain, new_instances)
 
         self.Outputs.expressions.send(tabla_config)
-
 
     def on_exception(self, ex: Exception):
         log = logging.getLogger(__name__)
