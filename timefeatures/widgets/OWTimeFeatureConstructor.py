@@ -1196,12 +1196,27 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
 
         expresiones = []
         variables = []
+        cont = 0
 
-        for i in range(0, len(self.data.domain) - 1):
-            variables.append(str(self.data.domain[i].name))
+        for feature in self.featureModelTime:
+            if feature.meta:
+                cont += 1
 
         for expre in self.featureModelTime:
             expresiones.append(str(expre.expression))
+
+        for i in range(0, len(self.data.domain) - (1+cont)):
+            variables.append(str(self.data.domain[i].name))
+
+        for metas in self.featureModelTime:
+            if metas.meta:
+                variables.append(str(metas.name))
+
+        print("----------------------")
+        print(variables)
+        print(list(self.featureModelTime))
+        print(expresiones)
+        print("----------------------")
 
         variable_column = Orange.data.DiscreteVariable(name="Variable", values=variables)
         expresion_column = Orange.data.DiscreteVariable(name="Expresion", values=expresiones)
