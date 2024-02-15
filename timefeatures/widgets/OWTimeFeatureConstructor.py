@@ -1176,7 +1176,6 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         if self.data is None:
             return
 
-        self.createConfigTable()
         desc = list(self.featuremodel)
         desc = self._validate_descriptors(desc)
         self.start(run, self.data, desc, self.expressions_with_values)
@@ -1188,6 +1187,8 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         if disc_attrs_not_ok:
             self.Error.more_values_needed(disc_attrs_not_ok)
             return
+
+        self.createConfigTable()
 
         self.setData(data) # Funciona pero se pierden las variables a aplastar con data.
         self.Outputs.data.send(data)
