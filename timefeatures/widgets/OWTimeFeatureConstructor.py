@@ -1190,7 +1190,7 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
 
         self.createConfigTable()
 
-        self.setData(data) # Funciona pero se pierden las variables a aplastar con data.
+        self.setData(data)
         self.Outputs.data.send(data)
 
     def createConfigTable(self):
@@ -1222,16 +1222,17 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
             else:
                 variables.append(str(self.data.domain[i].name))
 
-        for metas in self.featureModelTime:     # En este bucle tratamos las variables meta por separado con sus expresiones.
+        # En este bucle tratamos las variables meta por separado con sus expresiones.
+        for metas in self.featureModelTime:
             if metas.meta:
                 variables.append(str(metas.name))
                 expresiones.append(str(metas.expression))
                 variables.pop(0)
 
-        print("----------------------")
+        print("----------TFG------------")
         print(variables)
         print(expresiones)
-        print("----------------------")
+        print("-------------------------")
 
         variable_column = Orange.data.DiscreteVariable(name="Variable", values=variables)
         expresion_column = Orange.data.DiscreteVariable(name="Expresion", values=expresiones)

@@ -33,7 +33,6 @@ def from_row_col(f):
 
         expresion_regular = r'\b(' + '|'.join(map(re.escape, variables)) + r')\b'
 
-        print(expresion_regular)
         print("------------------------------------")
         relaciones = {}
 
