@@ -14,7 +14,7 @@ from Orange.widgets.utils.itemmodels import PyListModel
 from Orange.widgets.utils.owbasesql import OWBaseSql
 from Orange.widgets.utils.sql import check_sql_input
 from Orange.widgets.utils.widgetpreview import WidgetPreview
-from Orange.widgets.widget import Output, Msg
+from Orange.widgets.widget import Msg
 from PyQt5.QtWidgets import QGridLayout, QLineEdit, QPushButton, QSizePolicy, QLabel
 from orangewidget.utils.signals import Input
 
@@ -51,6 +51,9 @@ class OWTimeFeatureDB(OWBaseSql):
     class Inputs:
         data = Input("Data", Orange.data.Table)
 
+    class Outputs:
+        pass
+
     settings_version = 2
 
     buttons_area_orientation = None
@@ -72,7 +75,6 @@ class OWTimeFeatureDB(OWBaseSql):
 
     class Error(OWBaseSql.Error):
         no_backends = Msg("Please install a backend to use this widget.")
-        same_name = Msg("There is an instance with the same name already.")
 
     def __init__(self):
         # Lint
@@ -114,23 +116,24 @@ class OWTimeFeatureDB(OWBaseSql):
     def _setup_gui(self):
         super()._setup_gui()
         layoutA = QGridLayout()
-        layoutA.setSpacing(1)
+        layoutA.setSpacing(3)
         gui.widgetBox(self.controlArea, orientation=layoutA, box='Save dataset')
         self.target_label = QLabel()
-        layoutA.addWidget(self.target_label)
+        layoutA.addWidget(self.target_label,0,0)
         self.rows_label = QLabel()
-        layoutA.addWidget(self.rows_label)
+        layoutA.addWidget(self.rows_label,1,0)
         self.cols_label = QLabel()
-        layoutA.addWidget(self.cols_label)
+        gui.attributeIconDict
+        layoutA.addWidget(self.cols_label,2,0)
         self.tableName = QLineEdit(
             placeholderText="Table name...", toolTip="Table name")
-        layoutA.addWidget(self.tableName)
+        layoutA.addWidget(self.tableName,3,0)
         self.btn_savedata = QPushButton(
             "Save", toolTip="Save a dataset into a DB",
             minimumWidth=120
         )
         self.btn_savedata.clicked.connect(self.saveData)
-        layoutA.addWidget(self.btn_savedata)
+        layoutA.addWidget(self.btn_savedata,3,2)
         self._add_backend_controls()
 
     def _add_backend_controls(self):
@@ -154,14 +157,18 @@ class OWTimeFeatureDB(OWBaseSql):
 
     def saveData(self):
 
-        query = "INSERT INTO public.datasets (name, datetime, rows, cols, class) VALUES ('" + self.tableName.text() + "','" + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + "','" + str(self.rows) + "','" + str(self.cols) + "','" + str(self.target) + "'); "
+        self.clear()
 
-        try:
-            with self.backend.execute_sql_query(query):
-                pass
-        except BackendError as ex:
-            self.Error.same_name()
-            print("Error inserting data:", ex)
+        if self.tableName.text() is "":
+            self.Error.connection("Table name must be filled.")
+        else:
+            query = "INSERT INTO public.datasets (name, datetime, rows, cols, class) VALUES ('" + self.tableName.text() + "','" + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + "','" + str(self.rows) + "','" + str(self.cols) + "','" + str(self.target) + "');"
+
+            try:
+                with self.backend.execute_sql_query(query):
+                    pass
+            except BackendError as ex:
+                self.Error.connection(str(ex))
 
     def highlight_error(self, text=""):
         err = ['', 'QLineEdit {border: 2px solid red;}']
@@ -182,8 +189,9 @@ class OWTimeFeatureDB(OWBaseSql):
         self.highlight_error(str(err).split("\n")[0])
 
     def clear(self):
-        super().clear()
-        self.Warning.missing_extension.clear()
+        self.Error.connection.clear()
+        self.database_desc = None
+        self.data_desc_table = None
         self.highlight_error()
 
     @classmethod
