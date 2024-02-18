@@ -192,7 +192,7 @@ class OWTimeFeatureDB(OWBaseSql):
         create_table_query = f"CREATE TABLE {table_name} ("
         for variable in variables:
             if isinstance(variable, Orange.data.DiscreteVariable):
-                create_table_query += f'"{str(variable.name)}" VARCHAR(30),'
+                create_table_query += f'"{str(variable.name)}" VARCHAR,'
             elif isinstance(variable, Orange.data.ContinuousVariable):
                 create_table_query += f'"{variable.name}" FLOAT(10),'
             elif isinstance(variable, Orange.data.TimeVariable):
