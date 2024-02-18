@@ -220,20 +220,7 @@ class OWTimeFeatureDB(OWBaseSql):
         print(insert_query)
 
         for instance in self.data:
-            try:
-                data_row = [instance[i].value for i in range(len(variables))]  # Generar lista de valores para cada fila
-            except:
-                deleteTable = f"DROP TABLE {table_name};"
-                deleteTableData = f"DELETE FROM public.datasets WHERE name = '{table_name}';"
-                self.Error.connection("Metas atributes are not permited.")
-                try:
-                    with self.backend.execute_sql_query(deleteTableData):
-                        pass
-                    with self.backend.execute_sql_query(deleteTable):
-                        pass
-                except BackendError as ex:
-                    self.Error.connection(str(ex))
-
+            data_row = [instance[i].value for i in range(len(variables))]  # Generar lista de valores para cada fila
             if self.data.domain.class_var:
                 class_value = data_row[-1]  # Obtiene el valor de la clase
                 del data_row[-1]  # Elimina la clase de su posición anterior
@@ -248,12 +235,12 @@ class OWTimeFeatureDB(OWBaseSql):
 
         self.clear()
 
-        self.create_master_table()
-
         if self.tableName.text() == "":
             self.Error.connection("Table name must be filled.")
         elif self.servertext.text() == "" or self.databasetext.text() == "":
             self.Error.connection("Host and database fields must be filled.")
+        elif self.data.domain.metas:
+            self.Error.connection("Dataset with meta variables are not allowed.")
         else:
             self.create_master_table()
             query = "INSERT INTO public.datasets (name, datetime, rows, cols, class) VALUES ('" + self.tableName.text() + "','" + datetime.now().strftime(
