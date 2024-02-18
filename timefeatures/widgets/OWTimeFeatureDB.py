@@ -80,10 +80,6 @@ class OWTimeFeatureDB(OWBaseSql):
         # Lint
         self.backends = None
         self.backendcombo = None
-        self.tables = None
-        self.tablecombo = None
-        self.sqltext = None
-        self.custom_sql = None
         self.data = None
         self.rows = 0
         self.cols = 0
@@ -119,21 +115,21 @@ class OWTimeFeatureDB(OWBaseSql):
         layoutA.setSpacing(3)
         gui.widgetBox(self.controlArea, orientation=layoutA, box='Save dataset')
         self.target_label = QLabel()
-        layoutA.addWidget(self.target_label,0,0)
+        layoutA.addWidget(self.target_label, 0, 0)
         self.rows_label = QLabel()
-        layoutA.addWidget(self.rows_label,1,0)
+        layoutA.addWidget(self.rows_label, 1, 0)
         self.cols_label = QLabel()
         gui.attributeIconDict
-        layoutA.addWidget(self.cols_label,2,0)
+        layoutA.addWidget(self.cols_label, 2, 0)
         self.tableName = QLineEdit(
             placeholderText="Table name...", toolTip="Table name")
-        layoutA.addWidget(self.tableName,3,0)
+        layoutA.addWidget(self.tableName, 3, 0)
         self.btn_savedata = QPushButton(
             "Save", toolTip="Save a dataset into a DB",
             minimumWidth=120
         )
         self.btn_savedata.clicked.connect(self.saveData)
-        layoutA.addWidget(self.btn_savedata,3,2)
+        layoutA.addWidget(self.btn_savedata, 3, 2)
         self._add_backend_controls()
 
     def _add_backend_controls(self):
@@ -155,18 +151,119 @@ class OWTimeFeatureDB(OWBaseSql):
         backend = self.get_backend()
         self.selected_backend = backend.display_name if backend else None
 
+    def create_master_table(self):
+        query = f"""
+        CREATE TABLE IF NOT EXISTS datasets (
+            name VARCHAR(30) PRIMARY KEY NOT NULL,
+            datetime TIMESTAMP NOT NULL,
+            rows INT NOT NULL,
+            cols INT NOT NULL,
+            class VARCHAR(30)
+        )
+        """
+        try:
+            with self.backend.execute_sql_query(query):
+                pass
+        except BackendError as ex:
+            self.Error.connection(str(ex))
+
+    def create_table(self, table_name):
+
+        contMetasOriginales = 0
+        cont = 0
+        variables = []
+        tipo_var = []
+        tiene_class = 0
+
+        if self.data.domain.class_var:
+            variables.append(self.data.domain.class_var)
+            tiene_class += 1
+
+        for i in range(0, len(self.data.domain) - tiene_class):
+
+            if contMetasOriginales == 0:
+                contMetasOriginales += len(self.data.domain.metas)
+                cont = contMetasOriginales
+            if cont > 0:
+                i -= cont
+
+            variables.append(self.data.domain[i])
+
+        create_table_query = f"CREATE TABLE {table_name} ("
+        for variable in variables:
+            if isinstance(variable, Orange.data.DiscreteVariable):
+                create_table_query += f'"{str(variable.name)}" VARCHAR(30),'
+            elif isinstance(variable, Orange.data.ContinuousVariable):
+                create_table_query += f'"{variable.name}" FLOAT(10),'
+            elif isinstance(variable, Orange.data.TimeVariable):
+                create_table_query += f'"{variable.name}" TIMESTAMP,'
+            elif isinstance(variable, Orange.data.StringVariable):
+                create_table_query += f'"{str(variable.name)}" NUMERIC(30),'
+
+        create_table_query = create_table_query[:-1]
+        create_table_query += ")"
+
+        print(create_table_query)
+
+        try:
+            with self.backend.execute_sql_query(create_table_query):
+                pass
+        except BackendError as ex:
+            self.Error.connection(str(ex))
+
+        insert_query = f"INSERT INTO {table_name} VALUES ("
+        for i in range(len(variables)):
+            insert_query += "%s,"
+        insert_query = insert_query[:-1]  # Eliminar la coma final
+        insert_query += ")"
+
+        print(insert_query)
+
+        for instance in self.data:
+            try:
+                data_row = [instance[i].value for i in range(len(variables))]  # Generar lista de valores para cada fila
+            except:
+                deleteTable = f"DROP TABLE {table_name};"
+                deleteTableData = f"DELETE FROM public.datasets WHERE name = '{table_name}';"
+                self.Error.connection("Metas atributes are not permited.")
+                try:
+                    with self.backend.execute_sql_query(deleteTableData):
+                        pass
+                    with self.backend.execute_sql_query(deleteTable):
+                        pass
+                except BackendError as ex:
+                    self.Error.connection(str(ex))
+
+            if self.data.domain.class_var:
+                class_value = data_row[-1]  # Obtiene el valor de la clase
+                del data_row[-1]  # Elimina la clase de su posición anterior
+                data_row.insert(0, class_value)  # Inserta la clase al principio de la lista
+            try:
+                with self.backend.execute_sql_query(insert_query, params=data_row):
+                    pass
+            except BackendError as ex:
+                self.Error.connection(str(ex))
+
     def saveData(self):
 
         self.clear()
 
-        if self.tableName.text() is "":
+        self.create_master_table()
+
+        if self.tableName.text() == "":
             self.Error.connection("Table name must be filled.")
+        elif self.servertext.text() == "" or self.databasetext.text() == "":
+            self.Error.connection("Host and database fields must be filled.")
         else:
-            query = "INSERT INTO public.datasets (name, datetime, rows, cols, class) VALUES ('" + self.tableName.text() + "','" + datetime.now().strftime('%Y-%m-%d %H:%M:%S') + "','" + str(self.rows) + "','" + str(self.cols) + "','" + str(self.target) + "');"
+            self.create_master_table()
+            query = "INSERT INTO public.datasets (name, datetime, rows, cols, class) VALUES ('" + self.tableName.text() + "','" + datetime.now().strftime(
+                '%Y-%m-%d %H:%M:%S') + "','" + str(self.rows) + "','" + str(self.cols) + "','" + str(
+                self.target) + "');"
 
             try:
                 with self.backend.execute_sql_query(query):
                     pass
+                    self.create_table(self.tableName.text())
             except BackendError as ex:
                 self.Error.connection(str(ex))
 
@@ -190,8 +287,6 @@ class OWTimeFeatureDB(OWBaseSql):
 
     def clear(self):
         self.Error.connection.clear()
-        self.database_desc = None
-        self.data_desc_table = None
         self.highlight_error()
 
     @classmethod
