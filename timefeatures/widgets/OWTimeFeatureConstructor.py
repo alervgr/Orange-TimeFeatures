@@ -1081,6 +1081,8 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
             for desc in self.descriptors:
                 self.addFeatureTime(desc)
 
+        self.createConfigTable()
+
         self.descriptors = []
         self.currentIndex = -1
 
@@ -1187,8 +1189,6 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
         if disc_attrs_not_ok:
             self.Error.more_values_needed(disc_attrs_not_ok)
             return
-
-        self.createConfigTable()
 
         self.setData(data)
         self.Outputs.data.send(data)
