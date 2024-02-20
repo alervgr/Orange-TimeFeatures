@@ -260,22 +260,19 @@ class OWTimeFeatureDB(OWBaseSql):
             self.Error.connection("Table name must be filled.")
         elif self.servertext.text() == "" or self.databasetext.text() == "":
             self.Error.connection("Host and database fields must be filled.")
-        # elif self.data.domain.metas:
-            # self.Error.connection("Dataset with meta variables are not allowed.")
         else:
             self.create_master_table()
-            query = "INSERT INTO public.datasets (name, datetime, rows, cols, class) VALUES ('" + self.tableName.text() + "','" + datetime.now().strftime(
+            query = "INSERT INTO public.datasets (name, datetime, rows, cols, class) VALUES ('" + self.tableName.text().lower() + "','" + datetime.now().strftime(
                 '%Y-%m-%d %H:%M:%S') + "','" + str(self.rows) + "','" + str(self.cols) + "','" + str(
                 self.target) + "');"
 
             try:
                 with self.backend.execute_sql_query(query):
                     pass
-                    self.create_table(self.tableName.text())
+                    self.create_table(self.tableName.text().lower())
             except BackendError as ex:
                 self.Error.connection(str(ex))
         
-
     def highlight_error(self, text=""):
         err = ['', 'QLineEdit {border: 2px solid red;}']
         self.servertext.setStyleSheet(err['server' in text or 'host' in text])
