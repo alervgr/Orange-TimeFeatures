@@ -15,6 +15,7 @@ from Orange.widgets.utils.owbasesql import OWBaseSql
 from Orange.widgets.utils.sql import check_sql_input
 from Orange.widgets.utils.widgetpreview import WidgetPreview
 from Orange.widgets.widget import Msg
+from PyQt5.QtGui import QPixmap, QStandardItem
 from PyQt5.QtWidgets import QGridLayout, QLineEdit, QPushButton, QSizePolicy, QLabel
 from orangewidget.utils.signals import Input
 
@@ -172,7 +173,6 @@ class OWTimeFeatureDB(OWBaseSql):
         contMetasOriginales = 0
         cont = 0
         variables = []
-        tipo_var = []
         tiene_class = 0
 
         if self.data.domain.class_var:
@@ -203,8 +203,6 @@ class OWTimeFeatureDB(OWBaseSql):
         create_table_query = create_table_query[:-1]
         create_table_query += ")"
 
-        print(create_table_query)
-
         try:
             with self.backend.execute_sql_query(create_table_query):
                 pass
@@ -216,8 +214,6 @@ class OWTimeFeatureDB(OWBaseSql):
             insert_query += "%s,"
         insert_query = insert_query[:-1]  # Eliminar la coma final
         insert_query += ")"
-
-        print(insert_query)
 
         for instance in self.data:
             data_row = [instance[i].value for i in range(len(variables))]  # Generar lista de valores para cada fila

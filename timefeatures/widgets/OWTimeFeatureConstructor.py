@@ -1229,11 +1229,6 @@ class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
                 expresiones.append(str(metas.expression))
                 variables.pop(0)
 
-        print("----------TFG------------")
-        print(variables)
-        print(expresiones)
-        print("-------------------------")
-
         variable_column = Orange.data.DiscreteVariable(name="Variable", values=variables)
         expresion_column = Orange.data.DiscreteVariable(name="Expresion", values=expresiones)
 

@@ -33,7 +33,6 @@ def from_row_col(f):
 
         expresion_regular = r'\b(' + '|'.join(map(re.escape, variables)) + r')\b'
 
-        print("------------------------------------")
         relaciones = {}
 
         for datos in data:
@@ -48,9 +47,6 @@ def from_row_col(f):
                 for group in match.groups():
                     if group and group not in relaciones[variable]:
                         relaciones[variable].append(group)
-
-        print(relaciones)
-        print(tipo_var)
 
         row_edges, col_edges = [], []
         for i, variable in enumerate(relaciones):
@@ -69,7 +65,6 @@ def from_row_col(f):
 
         n = len(relaciones)
         edges = sp.csr_matrix((np.ones(len(row_edges)), (row_edges, col_edges)), shape=(n, n))
-        print(edges)
         return Network(range(n), edges, name=f"{f.__name__}{args}"), nombres_variables, tipo_var_reshaped
 
     return wrapped
