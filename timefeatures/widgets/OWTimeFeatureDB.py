@@ -272,7 +272,7 @@ class OWTimeFeatureDB(OWBaseSql):
                     self.create_table(self.tableName.text().lower())
             except BackendError as ex:
                 self.Error.connection(str(ex))
-        
+                
     def highlight_error(self, text=""):
         err = ['', 'QLineEdit {border: 2px solid red;}']
         self.servertext.setStyleSheet(err['server' in text or 'host' in text])
