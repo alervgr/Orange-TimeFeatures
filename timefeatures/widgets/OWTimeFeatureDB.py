@@ -198,10 +198,14 @@ class OWTimeFeatureDB(OWBaseSql):
             elif isinstance(variable, Orange.data.TimeVariable):
                 create_table_query += f'"{variable.name}" TIMESTAMP,'
             elif isinstance(variable, Orange.data.StringVariable):
-                create_table_query += f'"{str(variable.name)}" NUMERIC(30),'
+                create_table_query += f'"{str(variable.name)}" VARCHAR,'
 
         create_table_query = create_table_query[:-1]
         create_table_query += ")"
+
+        print("--------------------------")
+        print(create_table_query)
+        print("--------------------------")
 
         try:
             with self.backend.execute_sql_query(create_table_query):
@@ -215,8 +219,16 @@ class OWTimeFeatureDB(OWBaseSql):
         insert_query = insert_query[:-1]  # Eliminar la coma final
         insert_query += ")"
 
+        print("--------------------------")
+        print(insert_query)
+        print("--------------------------")
+
         for instance in self.data:
-            data_row = [instance[i].value for i in range(len(variables))]  # Generar lista de valores para cada fila
+            data_row = []
+            for i in range(len(variables)):
+                if cont > 0:
+                    i -= cont
+                data_row.append(instance[i].value)
             if self.data.domain.class_var:
                 class_value = data_row[-1]  # Obtiene el valor de la clase
                 del data_row[-1]  # Elimina la clase de su posición anterior
@@ -231,12 +243,25 @@ class OWTimeFeatureDB(OWBaseSql):
 
         self.clear()
 
+        '''print()
+        data_row = []
+        for instance in self.data:
+            for i in range(len(instance)):
+                data_row.append(instance[i].value)
+
+        for var in self.data.domain:
+            print(var.name)
+
+        print(len(self.data.domain))
+        print(len(self.data[0]))
+        print(self.data[0][-1].value)'''
+
         if self.tableName.text() == "":
             self.Error.connection("Table name must be filled.")
         elif self.servertext.text() == "" or self.databasetext.text() == "":
             self.Error.connection("Host and database fields must be filled.")
-        elif self.data.domain.metas:
-            self.Error.connection("Dataset with meta variables are not allowed.")
+        # elif self.data.domain.metas:
+            # self.Error.connection("Dataset with meta variables are not allowed.")
         else:
             self.create_master_table()
             query = "INSERT INTO public.datasets (name, datetime, rows, cols, class) VALUES ('" + self.tableName.text() + "','" + datetime.now().strftime(
@@ -249,6 +274,7 @@ class OWTimeFeatureDB(OWBaseSql):
                     self.create_table(self.tableName.text())
             except BackendError as ex:
                 self.Error.connection(str(ex))
+        
 
     def highlight_error(self, text=""):
         err = ['', 'QLineEdit {border: 2px solid red;}']
