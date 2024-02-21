@@ -42,12 +42,12 @@ class BackendModel(PyListModel):
         return super().data(index, role)
 
 
-class OWTimeFeatureDB(OWBaseSql):
-    name = "Time Feature DB"
-    description = "Save data in to a DB."
+class owsavetodb(OWBaseSql):
+    name = "Save to DB"
+    description = "Save a dataset into a DB."
     icon = "icons/savedatadb.svg"
     priority = 2240
-    keywords = "sql table, save, data"
+    keywords = "sql table, save, data, db, dataset"
 
     class Inputs:
         data = Input("Data", Orange.data.Table)
@@ -306,4 +306,4 @@ class OWTimeFeatureDB(OWBaseSql):
 
 
 if __name__ == "__main__":  # pragma: no cover
-    WidgetPreview(OWTimeFeatureDB).run()
+    WidgetPreview(owsavetodb).run()

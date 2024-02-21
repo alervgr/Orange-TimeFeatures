@@ -75,7 +75,7 @@ def grafo(data=None):
     return data
 
 
-class OWTFGraphGenerator(OWWidget, ConcurrentWidgetMixin):
+class owtfgraphgenerator(OWWidget, ConcurrentWidgetMixin):
     name = "T.F Graph Generator"
     description = "Construct a graph with all the conexions between the variables"
     icon = "icons/graphgenerator.svg"

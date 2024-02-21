@@ -809,7 +809,7 @@ class FeatureConstructorHandler(DomainContextHandler):
         return True
 
 
-class OWTimeFeatureConstructor(OWWidget, ConcurrentWidgetMixin):
+class owtimefeatureconstructor(OWWidget, ConcurrentWidgetMixin):
     name = "Time Feature Constructor"
     description = "Construct new time features (data columns) from a set of " \
                   "existing features in the input dataset."
@@ -1809,4 +1809,4 @@ class FeatureFunc:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    WidgetPreview(OWTimeFeatureConstructor).run(Orange.data.Table("iris"))
+    WidgetPreview(owtimefeatureconstructor).run(Orange.data.Table("iris"))
