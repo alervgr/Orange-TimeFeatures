@@ -996,9 +996,14 @@ class owtimefeatureconstructor(OWWidget, ConcurrentWidgetMixin):
 
         self.expressions_with_values = False
 
-        # Si hay datos originales los sustituye para que quede igual.
+        # Restablecer los datos a los datos originales solo si existen
         if self.dataOriginal is not None:
-            self.data = self.dataOriginal
+            # Restablecer los datos a los datos originales
+            self.data = self.dataOriginal.copy()
+
+            # Restablecer la estructura de los datos para eliminar columnas adicionales
+            self.data.domain = self.dataOriginal.domain
+
         self.descriptors = []
         self.currentIndex = -1
 
@@ -1069,11 +1074,12 @@ class owtimefeatureconstructor(OWWidget, ConcurrentWidgetMixin):
     def setData(self, data=None):
         """Set the input dataset."""
 
-        # Guardo los datos originales para poder hacer el reset.
-        if self.dataOriginal is None:
-            self.dataOriginal = data
-
         self.data = data
+
+        if self.dataOriginal is None or self.data.name != self.dataOriginal.name:
+            self.dataOriginal = data.copy()
+            self.reset_domain()
+
         self.expressions_with_values = False
 
         # Añado el descriptors a la nueva lista de variables.
