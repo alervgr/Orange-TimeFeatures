@@ -89,6 +89,8 @@ class owtfgraphgenerator(OWWidget, ConcurrentWidgetMixin):
 
     want_main_area = False
 
+    resizing_enabled = False
+
     settings_version = 3
 
     class Error(widget.OWWidget.Error):
@@ -104,6 +106,8 @@ class owtfgraphgenerator(OWWidget, ConcurrentWidgetMixin):
 
         super().__init__(*args, **kwargs)
         ConcurrentWidgetMixin.__init__(self)
+        self.controlArea.setMinimumWidth(360)
+
         self.data = None
 
         box = gui.vBox(self.controlArea, "Graph generator")
@@ -145,11 +149,11 @@ class owtfgraphgenerator(OWWidget, ConcurrentWidgetMixin):
             network = None
         else:
             n = len(network.nodes)
-            network.nodes = Table(Domain([], [], [StringVariable("nombre_var"), DiscreteVariable("tipo_var", values=["Derived", "Original"])]),
+            network.nodes = Table(Domain([], [], [StringVariable("var_name"), DiscreteVariable("var_type", values=["Derived", "Original"])]),
                                   np.zeros((n, 0)), np.zeros((n, 0)),
                                   np.arange(2*n).reshape((n, 2)))
 
-            network.nodes[:, "nombre_var"] = nombres_variables
-            network.nodes[:, "tipo_var"] = tipo_var_reshaped
+            network.nodes[:, "var_name"] = nombres_variables
+            network.nodes[:, "var_type"] = tipo_var_reshaped
 
         self.Outputs.network.send(network)

@@ -203,10 +203,6 @@ class owsavetodb(OWBaseSql):
         create_table_query = create_table_query[:-1]
         create_table_query += ")"
 
-        print("--------------------------")
-        print(create_table_query)
-        print("--------------------------")
-
         try:
             with self.backend.execute_sql_query(create_table_query):
                 pass
@@ -218,10 +214,6 @@ class owsavetodb(OWBaseSql):
             insert_query += "%s,"
         insert_query = insert_query[:-1]  # Eliminar la coma final
         insert_query += ")"
-
-        print("--------------------------")
-        print(insert_query)
-        print("--------------------------")
 
         for instance in self.data:
             data_row = []
@@ -242,19 +234,6 @@ class owsavetodb(OWBaseSql):
     def saveData(self):
 
         self.clear()
-
-        '''print()
-        data_row = []
-        for instance in self.data:
-            for i in range(len(instance)):
-                data_row.append(instance[i].value)
-
-        for var in self.data.domain:
-            print(var.name)
-
-        print(len(self.data.domain))
-        print(len(self.data[0]))
-        print(self.data[0][-1].value)'''
 
         if self.tableName.text() == "":
             self.Error.connection("Table name must be filled.")

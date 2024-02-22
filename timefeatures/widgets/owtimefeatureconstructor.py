@@ -814,7 +814,7 @@ class owtimefeatureconstructor(OWWidget, ConcurrentWidgetMixin):
     description = "Construct new time features (data columns) from a set of " \
                   "existing features in the input dataset."
     icon = "icons/timefeature.svg"
-    keywords = "time feature constructor, function, lambda"
+    keywords = "time feature constructor, function, lambda, time, constructor, feature"
     priority = 2240
 
     class Inputs:
@@ -1047,8 +1047,7 @@ class owtimefeatureconstructor(OWWidget, ConcurrentWidgetMixin):
 
             feature = editor.editorData()
             if editor.editorData().name != uniq:
-                self.Warning.renamed_var()
-                feature = feature.__class__(uniq, *feature[1:])
+                self.Error.transform_error("Avoid duplicates.\n")
 
             self.featuremodel[self.currentIndex] = feature
             self.descriptors = list(self.featuremodel)
