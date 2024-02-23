@@ -12,7 +12,7 @@ Installation
 
 Install from Orange add-on installer through Options -> Add-ons.
 
-![Installation](https://github.com/alervgr/Orange-TimeFeatures/blob/main/imgs/installation.png)
+![Installation](https://github.com/alervgr/Orange-TimeFeatures/blob/main/imgs/installation.png?raw=true)
 
 ### Using pip
 
@@ -59,4 +59,4 @@ Workflow Example
 -----
 This is an example of how you can use this add-on.
 
-![Workflow](https://github.com/alervgr/Orange-TimeFeatures/blob/main/imgs/workflow.png)
+![Workflow](https://github.com/alervgr/Orange-TimeFeatures/blob/main/imgs/workflow.png?raw=true)
