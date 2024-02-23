@@ -57,6 +57,6 @@ New widgets are in the toolbox bar under Networks section.
 
 Workflow Example
 -----
-This is and example of how you can use this add-on.
+This is an example of how you can use this add-on.
 
 ![Workflow](https://github.com/alervgr/Orange-TimeFeatures/blob/main/imgs/workflow.png)
