@@ -1,3 +1,11 @@
 Metadata-Version: 2.1
 Name: TimeFeatures
-Version: 0.0.2
+Version: 1.0.1
+Summary: Timefeatures add-on for Orange 3 data mining software for generating synthetic data using datasets with time series, generating graphs of relationships between the generated variables and includes another widget to save the data and configuration tables in a database.
+Home-page: https://github.com/alervgr/Orange-TimeFeatures
+Author: Alejandro Rivas García
+Author-email: alejandrorivasgarcia@gmail.com
+License: GPL3+
+Keywords: orange3 add-on,timefeatures,graph,time series,data mining,network visualization,orange
+Description-Content-Type: text/markdown
+License-File: LICENSE

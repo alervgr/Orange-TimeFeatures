@@ -1,3 +1,6 @@
+LICENSE
+README.md
+setup.cfg
 setup.py
 TimeFeatures.egg-info/PKG-INFO
 TimeFeatures.egg-info/SOURCES.txt
@@ -7,8 +10,11 @@ TimeFeatures.egg-info/top_level.txt
 timefeatures/__init__.py
 timefeatures/widgets/OWTFGraphGenerator.py
 timefeatures/widgets/OWTimeFeatureConstructor.py
-timefeatures/widgets/OWTimeFeatureDB.py
 timefeatures/widgets/__init__.py
+timefeatures/widgets/owsavetodb.py
+timefeatures/widgets/owtfgraphgenerator.py
+timefeatures/widgets/owtimefeatureconstructor.py
 timefeatures/widgets/icons/graphgenerator.svg
 timefeatures/widgets/icons/savedatadb.svg
+timefeatures/widgets/icons/timefeature-xs.svg
 timefeatures/widgets/icons/timefeature.svg
