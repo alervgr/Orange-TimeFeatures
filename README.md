@@ -41,6 +41,14 @@ If using Anaconda Python distribution, simply run
 
     pip install TimeFeatures
 
+**Required Dependencies**:
+* numpy>=1.22.4
+* AnyQt>=0.2.0
+* Orange3>=3.34.0
+* PyQt5>=5.15.6
+* scipy>=1.7.3
+* Orange3-Network>=1.8.0
+
 Usage
 -----
 
