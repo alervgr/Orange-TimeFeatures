@@ -31,5 +31,6 @@ setup(name="TimeFeatures",
       license="GPL3+",
       long_description=ABOUT,
       long_description_content_type='text/markdown',
-      description="Timefeatures add-on for Orange 3 data mining software for generating synthetic data using datasets with time series, generating graphs of relationships between the generated variables and includes another widget to save the data and configuration tables in a database.",
+      description="Timefeatures add-on for Orange 3 data mining software.",
+      classifiers=CLASSIFIERS,
       )
