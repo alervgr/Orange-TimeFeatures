@@ -1,4 +1,4 @@
-Orange3 Network
+Orange3 TimeFeatures
 ===============
 
 Timefeatures add-on for [Orange] 3 data mining software for generating synthetic data using datasets with time series, generating graphs of relationships between the generated variables and includes another widget to save the data and configuration tables in a database.
@@ -53,7 +53,7 @@ or
 
     python3 -m Orange.canvas
 
-New widgets are in the toolbox bar under Networks section.
+New widgets are in the toolbox bar under Time-Features section.
 
 Workflow Example
 -----
