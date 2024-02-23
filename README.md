@@ -12,8 +12,9 @@ Installation
 
 Install from Orange add-on installer through Options -> Add-ons.
 
+![Installation](https://github.com/alervgr/Orange-TimeFeatures/blob/main/imgs/installation.png)
 
-
+### Using pip
 
 To install the add-on with pip use
 
@@ -54,3 +55,8 @@ or
 
 New widgets are in the toolbox bar under Networks section.
 
+Workflow Example
+-----
+This is and example of how you can use this add-on.
+
+![Workflow](https://github.com/alervgr/Orange-TimeFeatures/blob/main/imgs/workflow.png)
