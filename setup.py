@@ -21,11 +21,11 @@ setup(name="TimeFeatures",
       packages=["timefeatures.widgets"],
       package_data={"timefeatures.widgets": ["icons/*.svg", "icons/*.png"]},
       entry_points={"orange.widgets": "Time-Features = timefeatures.widgets"},
-      version="1.0.5",
+      version="1.0.6",
       author="Alejandro Rivas García",
       author_email="alejandrorivasgarcia@gmail.com",
       keywords=[
-    'orange3 add-on','timefeatures','graph','time series','data mining','graph visualization','orange','addon'
+    'orange3 add-on','timefeatures','graph','time series','data mining','graph visualization','orange','addon', 'synthetic data'
 ],
       url="https://github.com/alervgr/Orange-TimeFeatures",
       license="GPL3+",
