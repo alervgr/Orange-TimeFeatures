@@ -1235,7 +1235,7 @@ class owtimefeatureconstructor(OWWidget, ConcurrentWidgetMixin):
                 variables.pop(0)
 
         variable_column = Orange.data.DiscreteVariable(name="Variable", values=variables)
-        expresion_column = Orange.data.DiscreteVariable(name="Expresion", values=expresiones)
+        expresion_column = Orange.data.DiscreteVariable(name="Expression", values=expresiones)
 
         # Creo el dominio
         domain = Orange.data.Domain([variable_column, expresion_column])

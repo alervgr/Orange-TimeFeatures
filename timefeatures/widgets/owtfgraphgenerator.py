@@ -124,6 +124,7 @@ class owtfgraphgenerator(OWWidget, ConcurrentWidgetMixin):
             minimumWidth=10
         )
         self.btn_generate.clicked.connect(self.generate)
+        self.btn_generate.setEnabled(False)
         buttonlayout.addWidget(self.btn_generate)
         toplayout.addLayout(buttonlayout, 0)
 
@@ -131,13 +132,19 @@ class owtfgraphgenerator(OWWidget, ConcurrentWidgetMixin):
     def setData(self, data=None):
 
         self.data = data
-        self.btn_generate.setEnabled(bool(self.data))
-        self.generate()
+
+        if self.data is not None:
+            if len(self.data.domain) >= 2 and (self.data.domain[0].name != "Variable" or self.data.domain[1].name != "Expression"):
+                self.Error.generation_error("You need a configuration table (Variable-Expression).")
+                self.Outputs.network.send(None)
+            else:
+                self.generate()
+                self.btn_generate.setEnabled(True)
+        else:
+            self.Outputs.network.send(None)
+            self.btn_generate.setEnabled(False)
 
     def generate(self):
-        if self.data is None:
-            self.error("No data provided.")
-            return
 
         func = self.GRAPH_TYPES[self.graph_type]
 
