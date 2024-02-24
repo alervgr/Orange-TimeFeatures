@@ -98,9 +98,15 @@ class owsavetodb(OWBaseSql):
 
         self.data = data
         self.btn_savedata.setEnabled(bool(self.data))
-        self.rows = len(self.data)
-        self.cols = len(self.data.domain)
-        target_variable = self.data.domain.class_var
+        target_variable = ""
+        if self.data is not None:
+            self.rows = len(self.data)
+            self.cols = len(self.data.domain)
+            target_variable = self.data.domain.class_var
+        else:
+            self.rows = 0
+            self.cols = 0
+            self.target = "None"
         if target_variable is not None:
             if isinstance(target_variable, Orange.data.DiscreteVariable):
                 self.target = "categorical"
@@ -108,6 +114,7 @@ class owsavetodb(OWBaseSql):
                 self.target = "numeric"
         else:
             self.target = None
+
         self.update_labels()
 
     def _setup_gui(self):
@@ -116,11 +123,13 @@ class owsavetodb(OWBaseSql):
         layoutA.setSpacing(3)
         gui.widgetBox(self.controlArea, orientation=layoutA, box='Save dataset')
         self.target_label = QLabel()
+        self.target_label.setText("Class: None")
         layoutA.addWidget(self.target_label, 0, 0)
         self.rows_label = QLabel()
+        self.rows_label.setText("Rows: 0")
         layoutA.addWidget(self.rows_label, 1, 0)
         self.cols_label = QLabel()
-        gui.attributeIconDict
+        self.cols_label.setText("Columns: 0")
         layoutA.addWidget(self.cols_label, 2, 0)
         self.tableName = QLineEdit(
             placeholderText="Table name...", toolTip="Table name")

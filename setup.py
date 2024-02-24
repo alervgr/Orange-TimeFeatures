@@ -21,7 +21,7 @@ setup(name="TimeFeatures",
       packages=["timefeatures.widgets"],
       package_data={"timefeatures.widgets": ["icons/*.svg", "icons/*.png"]},
       entry_points={"orange.widgets": "Time-Features = timefeatures.widgets"},
-      version="1.0.6",
+      version="1.0.7",
       author="Alejandro Rivas García",
       author_email="alejandrorivasgarcia@gmail.com",
       keywords=[
