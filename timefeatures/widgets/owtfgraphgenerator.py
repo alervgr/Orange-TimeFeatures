@@ -38,7 +38,7 @@ def from_row_col(f):
         for datos in data:
             variable = str(datos[0])
             variable = variable.replace(" ", "_").replace("-", "_")
-            if not math.isnan(datos[1]):
+            if not math.isnan(datos[1]) and str(datos[1]) != "NaN":
                 tipo_var.append(0)
             else:
                 tipo_var.append(1)
