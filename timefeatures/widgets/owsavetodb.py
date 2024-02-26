@@ -14,7 +14,7 @@ from Orange.widgets.utils.itemmodels import PyListModel
 from Orange.widgets.utils.owbasesql import OWBaseSql
 from Orange.widgets.utils.sql import check_sql_input
 from Orange.widgets.utils.widgetpreview import WidgetPreview
-from Orange.widgets.widget import Msg
+from Orange.widgets.widget import Msg, OWWidget
 from PyQt5.QtGui import QPixmap, QStandardItem
 from PyQt5.QtWidgets import QGridLayout, QLineEdit, QPushButton, QSizePolicy, QLabel
 from orangewidget.utils.signals import Input
@@ -42,7 +42,7 @@ class BackendModel(PyListModel):
         return super().data(index, role)
 
 
-class owsavetodb(OWBaseSql):
+class owsavetodb(OWBaseSql, OWWidget):
     name = "Save to DB"
     description = "Save a dataset into a DB."
     icon = "icons/savedatadb.svg"
@@ -139,6 +139,7 @@ class owsavetodb(OWBaseSql):
             minimumWidth=120
         )
         self.btn_savedata.clicked.connect(self.saveData)
+        self.btn_savedata.setEnabled(False)
         layoutA.addWidget(self.btn_savedata, 3, 2)
         self._add_backend_controls()
 
@@ -179,6 +180,7 @@ class owsavetodb(OWBaseSql):
 
     def create_table(self, table_name):
 
+        contBar = 0
         contMetasOriginales = 0
         cont = 0
         variables = []
@@ -224,8 +226,21 @@ class owsavetodb(OWBaseSql):
         insert_query = insert_query[:-1]  # Eliminar la coma final
         insert_query += ")"
 
+        self.progressBarInit()
+
         for instance in self.data:
             data_row = []
+            contBar += 1
+
+            if contBar*4 == len(self.data):
+                self.progressBarSet(25)
+            elif contBar*2 == len(self.data):
+                self.progressBarSet(50)
+            elif contBar == len(self.data)-(len(self.data)/4):
+                self.progressBarSet(75)
+            elif contBar == len(self.data):
+                self.progressBarSet(100)
+
             for i in range(len(variables)):
                 if cont > 0:
                     i -= cont
@@ -239,6 +254,7 @@ class owsavetodb(OWBaseSql):
                     pass
             except BackendError as ex:
                 self.Error.connection(str(ex))
+            self.progressBarFinished()
 
     def saveData(self):
 
