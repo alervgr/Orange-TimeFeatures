@@ -809,12 +809,12 @@ class FeatureConstructorHandler(DomainContextHandler):
         return True
 
 
-class owtimefeatureconstructor(OWWidget, ConcurrentWidgetMixin):
-    name = "Time Feature Constructor"
+class owtimefeaturesconstructor(OWWidget, ConcurrentWidgetMixin):
+    name = "Time Features Constructor"
     description = "Construct new time features (data columns) from a set of " \
                   "existing features in the input dataset."
     icon = "icons/timefeature.svg"
-    keywords = "time feature constructor, function, lambda, time, constructor, feature"
+    keywords = "time features constructor, function, time, constructor, features"
     priority = 2240
 
     class Inputs:
@@ -822,7 +822,7 @@ class owtimefeatureconstructor(OWWidget, ConcurrentWidgetMixin):
 
     class Outputs:
         data = Output("Data", Orange.data.Table)
-        expressions = Output("Expressions", Orange.data.Table)
+        expressions = Output("Variable Definitions", Orange.data.Table)
 
     want_main_area = False
 
@@ -1814,4 +1814,4 @@ class FeatureFunc:
 
 
 if __name__ == "__main__":  # pragma: no cover
-    WidgetPreview(owtimefeatureconstructor).run(Orange.data.Table("iris"))
+    WidgetPreview(owtimefeaturesconstructor).run(Orange.data.Table("iris"))

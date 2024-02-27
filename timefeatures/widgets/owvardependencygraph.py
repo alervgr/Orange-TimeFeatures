@@ -75,11 +75,11 @@ def grafo(data=None):
     return data
 
 
-class owtfgraphgenerator(OWWidget, ConcurrentWidgetMixin):
-    name = "T.F Graph Generator"
+class owvardependencygraph(OWWidget, ConcurrentWidgetMixin):
+    name = "Variable Dependency Graph"
     description = "Construct a graph with all the conexions between the variables"
     icon = "icons/graphgenerator.svg"
-    keywords = "time feature graph generator, function, graph"
+    keywords = "variable dependency graph, function, graph, dependency, variable"
     priority = 2240
 
     GRAPH_TYPES = (
@@ -97,7 +97,7 @@ class owtfgraphgenerator(OWWidget, ConcurrentWidgetMixin):
         generation_error = Msg("{}")
 
     class Inputs:
-        data = Input("Data", Orange.data.Table)
+        data = Input("Variable Definitions", Orange.data.Table)
 
     class Outputs:
         network = Output("Network", Network)
@@ -120,7 +120,7 @@ class owtfgraphgenerator(OWWidget, ConcurrentWidgetMixin):
         buttonlayout.setContentsMargins(0, 0, 0, 0)
 
         self.btn_generate = QPushButton(
-            "Generar", toolTip="Generar grafo",
+            "Generate", toolTip="Generate dependency graph.",
             minimumWidth=10
         )
         self.btn_generate.clicked.connect(self.generate)
