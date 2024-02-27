@@ -180,6 +180,7 @@ class owsavetodb(OWBaseSql, OWWidget):
 
     def create_table(self, table_name):
 
+        self.progressBarInit()
         contBar = 0
         contMetasOriginales = 0
         cont = 0
@@ -226,20 +227,10 @@ class owsavetodb(OWBaseSql, OWWidget):
         insert_query = insert_query[:-1]  # Eliminar la coma final
         insert_query += ")"
 
-        self.progressBarInit()
-
         for instance in self.data:
             data_row = []
             contBar += 1
-
-            if contBar*4 == len(self.data):
-                self.progressBarSet(25)
-            elif contBar*2 == len(self.data):
-                self.progressBarSet(50)
-            elif contBar == len(self.data)-(len(self.data)/4):
-                self.progressBarSet(75)
-            elif contBar == len(self.data):
-                self.progressBarSet(100)
+            self.progressBarSet((contBar + 1) * 100 / len(self.data))
 
             for i in range(len(variables)):
                 if cont > 0:
