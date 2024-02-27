@@ -815,10 +815,11 @@ class owtimefeaturesconstructor(OWWidget, ConcurrentWidgetMixin):
                   "existing features in the input dataset."
     icon = "icons/timefeature.svg"
     keywords = "time features constructor, function, time, constructor, features"
-    priority = 2240
+    priority = 2239
 
     class Inputs:
         data = Input("Data", Orange.data.Table)
+        expressions = Input("Variable Definitions", Orange.data.Table)
 
     class Outputs:
         data = Output("Data", Orange.data.Table)
@@ -847,11 +848,13 @@ class owtimefeaturesconstructor(OWWidget, ConcurrentWidgetMixin):
     class Warning(OWWidget.Warning):
         renamed_var = Msg("Recently added variable has been renamed, "
                           "to avoid duplicates.\n")
+        table_warning = Msg("You need a configuration table (Variable-Expression).")
 
     def __init__(self):
         super().__init__()
         ConcurrentWidgetMixin.__init__(self)
         self.data = None
+        self.expressions = None
         self.dataOriginal = None
         self.editors = {}
 
@@ -1101,6 +1104,35 @@ class owtimefeaturesconstructor(OWWidget, ConcurrentWidgetMixin):
         selmodel.selectionChanged.connect(self._on_selectedVariableChanged)
         self.fix_button.setHidden(not self.expressions_with_values)
         self.editorstack.setEnabled(self.currentIndex >= 0)
+
+    @Inputs.expressions
+    @check_sql_input
+    def setExpressions(self, expressions=None):
+
+        self.expressions = expressions
+
+        if self.expressions is None:
+            self.Warning.clear()
+            self.Error.transform_error.clear()
+
+        if self.data is not None and self.expressions is not None:
+            if self.expressions is not None:
+                if len(self.expressions.domain) >= 2 and (self.expressions.domain[0].name != "Variable" or self.expressions.domain[1].name != "Expression"):
+                    self.Warning.table_warning()
+                else:
+                    self.apply()
+                    self.Error.transform_error.clear()
+                    for datos in reversed(self.expressions):
+                        if not math.isnan(datos[1]) and str(datos[1]) != "NaN":
+                            desc = ContinuousDescriptor(
+                                name=str(datos[0]),
+                                expression=str(datos[1]),
+                                meta=False,
+                                number_of_decimals=None,
+                            )
+                            self.addFeature(desc)
+        else:
+            self.Error.transform_error("There is not data input.")
 
     def handleNewSignals(self):
         if self.data is not None:

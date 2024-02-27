@@ -46,7 +46,7 @@ class owsavetodb(OWBaseSql, OWWidget):
     name = "Save to DB"
     description = "Save a dataset into a DB."
     icon = "icons/savedatadb.svg"
-    priority = 2240
+    priority = 2241
     keywords = "sql table, save, data, db, dataset"
 
     class Inputs:
