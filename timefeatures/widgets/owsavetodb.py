@@ -169,7 +169,8 @@ class owsavetodb(OWBaseSql, OWWidget):
             datetime TIMESTAMP NOT NULL,
             rows INT NOT NULL,
             cols INT NOT NULL,
-            class VARCHAR(30)
+            class VARCHAR(30),
+            class_name VARCHAR(30)
         )
         """
         try:
@@ -257,9 +258,15 @@ class owsavetodb(OWBaseSql, OWWidget):
             self.Error.connection("Host and database fields must be filled.")
         else:
             self.create_master_table()
-            query = "INSERT INTO public.datasets (name, datetime, rows, cols, class) VALUES ('" + self.tableName.text().lower() + "','" + datetime.now().strftime(
+
+            if self.data.domain.class_var:
+                class_name = self.data.domain.class_var.name
+            else:
+                class_name = None
+
+            query = "INSERT INTO public.datasets (name, datetime, rows, cols, class, class_name) VALUES ('" + self.tableName.text().lower() + "','" + datetime.now().strftime(
                 '%Y-%m-%d %H:%M:%S') + "','" + str(self.rows) + "','" + str(self.cols) + "','" + str(
-                self.target) + "');"
+                self.target) + "','" + str(class_name) + "');"
 
             try:
                 with self.backend.execute_sql_query(query):
