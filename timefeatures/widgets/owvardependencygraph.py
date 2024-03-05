@@ -17,7 +17,7 @@ from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QHBoxLayout
 from orangecontrib.network import Network
 from orangewidget.utils.signals import Input
 
-def calculate_weight(expression):
+'''def calculate_weight(expression):
     # Encontrar todas las coincidencias con las funciones temporales y almacenarlas
     matches_shift = list(re.finditer(r'shift\(([^,]+),([-+]?\d+)\)', expression))
     matches_sum = list(re.finditer(r'sum\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expression))
@@ -34,7 +34,7 @@ def calculate_weight(expression):
         variable_name = match.group(1)
         shift_value = match.group(2)
 
-        valores[variable_name] = -int(shift_value)
+        valores[variable_name] = -abs(int(shift_value))
 
     for match in matches_sum:
         variable_name = match.group(1)
@@ -78,8 +78,7 @@ def calculate_weight(expression):
 
         valores[variable_name] = -max(abs(int(sd_value1)), abs(int(sd_value2)))
 
-    return valores.values()
-
+    return valores.values()'''
 
 def from_row_col(f):
     @wraps(f)
@@ -97,16 +96,16 @@ def from_row_col(f):
         expresion_regular = r'\b(' + '|'.join(map(re.escape, variables)) + r')\b'
 
         relaciones = {}
-        edge_weights = []
+        # edge_weights = []
 
         for datos in data:
             variable = str(datos[0])
             variable = variable.replace(" ", "_").replace("-", "_")
             if not math.isnan(datos[1]) and str(datos[1]) != "NaN":
                 tipo_var.append(0)
-                edge_weights_exp = calculate_weight(str(datos[1]))
-                for weight in edge_weights_exp:
-                    edge_weights.append(float(weight))
+                # edge_weights_exp = calculate_weight(str(datos[1]))
+                # for weight in edge_weights_exp:
+                    # edge_weights.append(int(weight))
             else:
                 tipo_var.append(1)
             relaciones[variable] = []
@@ -130,18 +129,11 @@ def from_row_col(f):
 
         tipo_var_reshaped = np.array(tipo_var).reshape(-1, 1)
 
-        np_edge_weights = np.array(edge_weights)
-        print(np_edge_weights)
-
-        for a in np_edge_weights:
-            print(type(a))
-
-        for s in np.ones(len(row_edges)):
-            print(type(s))
+        # np_edge_weights = np.array(edge_weights)
 
         n = len(relaciones)
-        edges = sp.csr_matrix((np_edge_weights, (row_edges, col_edges)), shape=(n, n))
-        print(edges)
+        # edges = sp.csr_matrix((np_edge_weights, (row_edges, col_edges)), shape=(n, n))
+        edges = sp.csr_matrix((np.ones(len(row_edges)), (row_edges, col_edges)), shape=(n, n))
         return Network(range(n), edges, name=f"{f.__name__}{args}"), nombres_variables, tipo_var_reshaped
 
     return wrapped
