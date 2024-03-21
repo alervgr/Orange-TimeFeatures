@@ -819,6 +819,7 @@ class owtimefeaturesconstructor(OWWidget, ConcurrentWidgetMixin):
 
     class Inputs:
         data = Input("Data", Orange.data.Table)
+        expressions = Input("Variable Definitions", Orange.data.Table)
 
     class Outputs:
         data = Output("Data", Orange.data.Table)
@@ -1103,6 +1104,35 @@ class owtimefeaturesconstructor(OWWidget, ConcurrentWidgetMixin):
         self.fix_button.setHidden(not self.expressions_with_values)
         self.editorstack.setEnabled(self.currentIndex >= 0)
 
+    @Inputs.expressions
+    @check_sql_input
+    def setExpressions(self, expressions=None):
+
+        self.expressions = expressions
+
+        if self.expressions is None:
+            self.Warning.clear()
+            self.Error.transform_error.clear()
+
+        if self.data is not None and self.expressions is not None:
+            if self.expressions is not None:
+                if len(self.expressions.domain) >= 2 and (
+                        self.expressions.domain[0].name != "Variable" or self.expressions.domain[1].name != "Expression"):
+                    self.Warning.table_warning()
+                else:
+                    self.Error.transform_error.clear()
+                    for datos in reversed(self.expressions):
+                        if not math.isnan(datos[1]) and str(datos[1]) != "NaN":
+                            desc = ContinuousDescriptor(
+                                name=str(datos[0]),
+                                expression=str(datos[1]),
+                                meta=False,
+                                number_of_decimals=3,
+                            )
+                            self.addFeature(desc)
+        else:
+            self.Error.transform_error("There is not data input.")
+
     def handleNewSignals(self):
         if self.data is not None:
             self.apply()
@@ -1187,6 +1217,14 @@ class owtimefeaturesconstructor(OWWidget, ConcurrentWidgetMixin):
         desc = list(self.featuremodel)
         desc = self._validate_descriptors(desc)
         self.start(run, self.data, desc, self.expressions_with_values)
+
+        '''
+        INTENTO DE PODER USAR VARIABLES NO CONTENIDAS EN EL DATASET ORIGINAL.
+        
+        desc = list(self.featuremodel)
+        for d in desc:
+            self.start(run, self.data, self._validate_descriptors(d), self.expressions_with_values)'''
+
 
     def on_done(self, result: "Result") -> None:
         data, attrs, desc = result.data, result.attributes, result.desc
@@ -1361,6 +1399,7 @@ class Result:
 def run(data: Table, desc, use_values, task: TaskState) -> Result:
     if task.is_interruption_requested():
         raise CancelledError  # pragma: no cover
+
     new_variables, new_metas = construct_variables(desc, data, use_values)
     # Explicit cancellation point after `construct_variables` which can
     # already run `compute_value`.
@@ -1374,10 +1413,14 @@ def run(data: Table, desc, use_values, task: TaskState) -> Result:
     try:
         for variable in new_variables:
             variable.compute_value.mask_exceptions = False
-        data = data.transform(new_domain)
+        try:
+            data = data.transform(new_domain)
+        except:
+            raise TypeError("One or more variables were not found.")
     finally:
         for variable in new_variables:
             variable.compute_value.mask_exceptions = True
+
     return Result(data, new_variables, new_metas, desc)
 
 
@@ -1456,6 +1499,7 @@ def validate_exp(exp):
 
 def construct_variables(descriptions, data, use_values=False):
     # subs
+
     variables = []
     metas = []
     source_vars = data.domain.variables + data.domain.metas

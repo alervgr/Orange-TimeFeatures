@@ -17,7 +17,11 @@ from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QHBoxLayout
 from orangecontrib.network import Network
 from orangewidget.utils.signals import Input
 
-'''def calculate_weight(expression):
+'''
+
+CALCULO DE PONDERACIONES PARA LOS PESOS DE LAS ARISTAS.
+
+def calculate_weight(expression):
     # Encontrar todas las coincidencias con las funciones temporales y almacenarlas
     matches_shift = list(re.finditer(r'shift\(([^,]+),([-+]?\d+)\)', expression))
     matches_sum = list(re.finditer(r'sum\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expression))
