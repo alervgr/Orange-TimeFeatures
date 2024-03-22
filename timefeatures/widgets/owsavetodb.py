@@ -19,6 +19,12 @@ from PyQt5.QtGui import QPixmap, QStandardItem
 from PyQt5.QtWidgets import QGridLayout, QLineEdit, QPushButton, QSizePolicy, QLabel
 from orangewidget.utils.signals import Input
 
+import re
+
+import smtplib, ssl, time
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
 MAX_DL_LIMIT = 1000000
 
 
@@ -131,6 +137,9 @@ class owsavetodb(OWBaseSql, OWWidget):
         self.cols_label = QLabel()
         self.cols_label.setText("Columns: 0")
         layoutA.addWidget(self.cols_label, 2, 0)
+        self.emailDirection = QLineEdit(
+            placeholderText="Email... (Optional)", toolTip="Email direction")
+        layoutA.addWidget(self.emailDirection, 4, 0)
         self.tableName = QLineEdit(
             placeholderText="Table name...", toolTip="Table name")
         layoutA.addWidget(self.tableName, 3, 0)
@@ -140,7 +149,7 @@ class owsavetodb(OWBaseSql, OWWidget):
         )
         self.btn_savedata.clicked.connect(self.saveData)
         self.btn_savedata.setEnabled(False)
-        layoutA.addWidget(self.btn_savedata, 3, 2)
+        layoutA.addWidget(self.btn_savedata, 4, 2)
         self._add_backend_controls()
 
     def _add_backend_controls(self):
@@ -180,7 +189,7 @@ class owsavetodb(OWBaseSql, OWWidget):
             self.Error.connection(str(ex))
 
     def create_table(self, table_name):
-
+        start_time = time.time()
         self.progressBarInit()
         contBar = 0
         contMetasOriginales = 0
@@ -246,35 +255,115 @@ class owsavetodb(OWBaseSql, OWWidget):
                     pass
             except BackendError as ex:
                 self.Error.connection(str(ex))
-            self.progressBarFinished()
+
+        self.progressBarFinished()
+        if str(self.emailDirection.text()) != "":
+            end_time = time.time()
+            time_elapsed = end_time - start_time
+            time_elapsed = round(time_elapsed, 3)
+            self.send_mail(str(self.emailDirection.text()), time_elapsed)
+
+    def send_mail(self, mail, time_elapsed):
+
+        # Configuración de la connexión
+        sender = 'savetodbodm@gmail.com'
+        password = 'arnj lakd lyol rakg'
+        server = 'smtp.gmail.com'
+        port = 587
+
+        # Configuración del destinatario
+        to = mail
+
+        # configuración de las cabeceras y del mensaje
+        message = MIMEMultipart("alternative")
+
+        current_datetime = datetime.now()
+        formatted_datetime = current_datetime.strftime('%d-%m-%Y %H:%M:%S')
+
+        message["Subject"] = "Upload completed - Save To DB - " + str(formatted_datetime)
+        message["From"] = sender
+        message["To"] = to
+
+        if self.data.domain.class_var:
+            class_name = self.data.domain.class_var.name
+        else:
+            class_name = None
+
+        body = f"""\
+        <html>
+            <head>
+            </head>
+            <body>
+                <h1>Save to DB - Widget</h1>
+                <p>Your data upload has been completed!</p>
+                <p>-Table information:</p>
+                <ul>
+                    <li>Table name: {str(self.tableName.text())}.</li>
+                    <li>{str(self.rows_label.text())}.</li>
+                    <li>{str(self.cols_label.text())}.</li>
+                    <li>Class name: {str(class_name)}</li>
+                    <li>{str(self.target_label.text())}.</li>
+                </ul>
+                <p>-Connection information:</p>
+                <ul>
+                    <li>Server name: {str(self.servertext.text())}</li>
+                    <li>Database name: {str(self.databasetext.text())}</li>
+                    <li>Time Elapsed: {str(time_elapsed)}s.</li>
+                </ul>
+            </body>
+        </html>
+        """
+
+        part = MIMEText(body, "html")
+        message.attach(part)
+
+        # Envío del mensaje
+        try:
+            context = ssl.create_default_context()
+            with smtplib.SMTP(server, port=port) as smtp:
+                smtp.starttls(context=context)
+                smtp.login(sender, password)
+                smtp.send_message(message)
+        except Exception as ex:
+            self.Error.connection(str(ex))
 
     def saveData(self):
 
         self.clear()
 
+        email_regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+
         if self.tableName.text() == "":
             self.Error.connection("Table name must be filled.")
         elif self.servertext.text() == "" or self.databasetext.text() == "":
             self.Error.connection("Host and database fields must be filled.")
-        else:
-            self.create_master_table()
-
-            if self.data.domain.class_var:
-                class_name = self.data.domain.class_var.name
+        elif self.emailDirection.text() != "":
+            if not re.match(email_regex, self.emailDirection.text()):
+                self.Error.connection("The field email must be an email.")
             else:
-                class_name = None
+                self.insert_data()
+        else:
+            self.insert_data()
 
-            query = "INSERT INTO public.datasets (name, datetime, rows, cols, class, class_name) VALUES ('" + self.tableName.text().lower() + "','" + datetime.now().strftime(
-                '%Y-%m-%d %H:%M:%S') + "','" + str(self.rows) + "','" + str(self.cols) + "','" + str(
-                self.target) + "','" + str(class_name) + "');"
+    def insert_data(self):
+        self.create_master_table()
 
-            try:
-                with self.backend.execute_sql_query(query):
-                    pass
-                    self.create_table(self.tableName.text().lower())
-            except BackendError as ex:
-                self.Error.connection(str(ex))
-                
+        if self.data.domain.class_var:
+            class_name = self.data.domain.class_var.name
+        else:
+            class_name = None
+
+        query = "INSERT INTO public.datasets (name, datetime, rows, cols, class, class_name) VALUES ('" + self.tableName.text().lower() + "','" + datetime.now().strftime(
+            '%Y-%m-%d %H:%M:%S') + "','" + str(self.rows) + "','" + str(self.cols) + "','" + str(
+            self.target) + "','" + str(class_name) + "');"
+
+        try:
+            with self.backend.execute_sql_query(query):
+                pass
+                self.create_table(self.tableName.text().lower())
+        except BackendError as ex:
+            self.Error.connection(str(ex))
+
     def highlight_error(self, text=""):
         err = ['', 'QLineEdit {border: 2px solid red;}']
         self.servertext.setStyleSheet(err['server' in text or 'host' in text])
