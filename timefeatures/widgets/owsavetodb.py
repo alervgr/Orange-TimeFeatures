@@ -265,7 +265,7 @@ class owsavetodb(OWBaseSql, OWWidget):
 
     def send_mail(self, mail, time_elapsed):
 
-        # Configuración de la connexión
+        # Configuración de la conexión
         sender = 'savetodbodm@gmail.com'
         password = 'arnj lakd lyol rakg'
         server = 'smtp.gmail.com'
@@ -274,7 +274,7 @@ class owsavetodb(OWBaseSql, OWWidget):
         # Configuración del destinatario
         to = mail
 
-        # configuración de las cabeceras y del mensaje
+        # Configuración de las cabeceras y del mensaje
         message = MIMEMultipart("alternative")
 
         current_datetime = datetime.now()
@@ -301,13 +301,13 @@ class owsavetodb(OWBaseSql, OWWidget):
                     <li>Table name: {str(self.tableName.text())}.</li>
                     <li>{str(self.rows_label.text())}.</li>
                     <li>{str(self.cols_label.text())}.</li>
-                    <li>Class name: {str(class_name)}</li>
+                    <li>Class name: {str(class_name)}.</li>
                     <li>{str(self.target_label.text())}.</li>
                 </ul>
                 <p>-Connection information:</p>
                 <ul>
-                    <li>Server name: {str(self.servertext.text())}</li>
-                    <li>Database name: {str(self.databasetext.text())}</li>
+                    <li>Server: {str(self.servertext.text())}.</li>
+                    <li>Database name: {str(self.databasetext.text())}.</li>
                     <li>Time Elapsed: {str(time_elapsed)}s.</li>
                 </ul>
             </body>

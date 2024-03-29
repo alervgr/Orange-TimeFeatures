@@ -2,8 +2,7 @@ from setuptools import setup
 
 with open('README.md', 'r', encoding='utf-8') as f:
     ABOUT = f.read()
-    
-    
+
 CLASSIFIERS = [
     'Development Status :: 4 - Beta',
     'Environment :: Plugins',
@@ -14,8 +13,7 @@ CLASSIFIERS = [
     'Intended Audience :: Education',
     'Intended Audience :: Science/Research',
     'Intended Audience :: Developers',
-]    
-
+]
 
 setup(name="TimeFeatures",
       packages=["timefeatures.widgets"],
@@ -25,8 +23,9 @@ setup(name="TimeFeatures",
       author="Alejandro Rivas García",
       author_email="alejandrorivasgarcia@gmail.com",
       keywords=[
-    'orange3 add-on','timefeatures','graph','time series','data mining','graph visualization','orange','addon', 'synthetic data'
-],
+          'orange3 add-on', 'timefeatures', 'graph', 'time series', 'data mining', 'graph visualization', 'orange',
+          'addon', 'synthetic data'
+      ],
       url="https://github.com/alervgr/Orange-TimeFeatures",
       license="GPL3+",
       long_description=ABOUT,
