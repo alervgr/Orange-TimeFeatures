@@ -48,3 +48,6 @@ coverage.xml
 
 # Sphinx documentation
 .spyproject/
+
+# intellij configs
+.idea/
