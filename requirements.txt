@@ -4,4 +4,5 @@ AnyQt>=0.2.0
 Orange3>=3.34.0
 PyQt5>=5.15.6
 scipy>=1.7.3
+psycopg2>=2.9.9
 Orange3-Network>=1.8.0

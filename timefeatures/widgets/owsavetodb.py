@@ -1,13 +1,11 @@
 import Orange
-from AnyQt.QtWidgets import QComboBox, QTextEdit, QMessageBox, QApplication
-from AnyQt.QtGui import QCursor
+from AnyQt.QtWidgets import QComboBox
 from AnyQt.QtCore import Qt
 from datetime import datetime
 
 from Orange.data import Table
 from Orange.data.sql.backend import Backend
 from Orange.data.sql.backend.base import BackendError
-from Orange.data.sql.table import SqlTable, LARGE_TABLE, AUTO_DL_LIMIT
 from Orange.widgets import gui
 from Orange.widgets.settings import Setting
 from Orange.widgets.utils.itemmodels import PyListModel
@@ -15,7 +13,6 @@ from Orange.widgets.utils.owbasesql import OWBaseSql
 from Orange.widgets.utils.sql import check_sql_input
 from Orange.widgets.utils.widgetpreview import WidgetPreview
 from Orange.widgets.widget import Msg, OWWidget
-from PyQt5.QtGui import QPixmap, QStandardItem
 from PyQt5.QtWidgets import QGridLayout, QLineEdit, QPushButton, QSizePolicy, QLabel
 from orangewidget.utils.signals import Input
 
@@ -30,14 +27,6 @@ MAX_DL_LIMIT = 1000000
 
 def is_postgres(backend):
     return getattr(backend, 'display_name', '') == "PostgreSQL"
-
-
-class TableModel(PyListModel):
-    def data(self, index, role=Qt.DisplayRole):
-        row = index.row()
-        if role == Qt.DisplayRole:
-            return str(self[row])
-        return super().data(index, role)
 
 
 class BackendModel(PyListModel):
@@ -62,20 +51,9 @@ class owsavetodb(OWBaseSql, OWWidget):
         pass
 
     settings_version = 2
-
     buttons_area_orientation = None
-
     selected_backend = Setting(None)
-    table = Setting(None)
     sql = Setting("")
-    guess_values = Setting(True)
-    download = Setting(False)
-
-    materialize = Setting(False)
-    materialize_table_name = Setting("")
-
-    class Information(OWBaseSql.Information):
-        data_sampled = Msg("Data description was generated from a sample.")
 
     class Warning(OWBaseSql.Warning):
         missing_extension = Msg("Database is missing extensions: {}")

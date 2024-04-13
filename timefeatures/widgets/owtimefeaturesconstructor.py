@@ -147,7 +147,7 @@ def modificar_expression(expression):
         mean_value1 = match.group(2)
         mean_value2 = match.group(3)
 
-        new_mean = f'mean{match_counter_sum}({variable_name},{mean_value1},{mean_value2})'
+        new_mean = f'mean{match_counter_mean}({variable_name},{mean_value1},{mean_value2})'
 
         modified_expression = modified_expression.replace(match.group(0), new_mean, 1)
 
@@ -846,8 +846,6 @@ class owtimefeaturesconstructor(OWWidget, ConcurrentWidgetMixin):
         transform_error = Msg("{}")
 
     class Warning(OWWidget.Warning):
-        renamed_var = Msg("Recently added variable has been renamed, "
-                          "to avoid duplicates.\n")
         table_warning = Msg("You need a configuration table (Variable-Expression).")
 
     def __init__(self):
