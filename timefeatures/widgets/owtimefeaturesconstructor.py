@@ -1414,7 +1414,7 @@ def run(data: Table, desc, use_values, task: TaskState) -> Result:
         try:
             data = data.transform(new_domain)
         except:
-            raise TypeError("One or more variables were not found.")
+            raise ValueError("Expression error.")
     finally:
         for variable in new_variables:
             variable.compute_value.mask_exceptions = True
