@@ -1114,7 +1114,7 @@ class owtimefeaturesconstructor(OWWidget, ConcurrentWidgetMixin):
 
         if self.data is not None and self.expressions is not None:
             if self.expressions is not None:
-                if len(self.expressions.domain) >= 2 and (
+                if len(self.expressions.domain) >= 1 and (
                         self.expressions.domain[0].name != "Variable" or self.expressions.domain[1].name != "Expression"):
                     self.Warning.table_warning()
                 else:
