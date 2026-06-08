@@ -27,7 +27,7 @@ setup(name="TimeFeatures",
           "psycopg2-binary>=2.9.9",
           "Orange3-Network>=1.8.0",
       ],
-      version="1.0.17",
+      version="1.0.18",
       author="Alejandro Rivas García",
       author_email="alejandrorivasgarcia@gmail.com",
       keywords=[
