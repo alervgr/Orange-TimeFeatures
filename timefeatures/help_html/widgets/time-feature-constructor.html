@@ -262,6 +262,31 @@ returns the appropriate slice for each chunk, so a call like
 multi-million-row tables.</p>
 </section>
 </section>
+<section id="chained-descriptors">
+<h2>Chained descriptors<a class="headerlink" href="#chained-descriptors" title="Link to this heading">¶</a></h2>
+<p>Descriptors may reference each other. For example:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">X1</span> <span class="o">:=</span> <span class="n">shift</span><span class="p">(</span><span class="n">price</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">X2</span> <span class="o">:=</span> <span class="n">X1</span> <span class="o">+</span> <span class="n">bias</span>
+</pre></div>
+</div>
+<p>When this happens, the widget topologically sorts the descriptors by
+their dependencies and applies them in cascade — each transform step
+runs against the table state produced by the previous step, so <code class="docutils literal notranslate"><span class="pre">X2</span></code>
+sees <code class="docutils literal notranslate"><span class="pre">X1</span></code> as if it were a regular source column.</p>
+<ul class="simple">
+<li><p>The order you click <strong>New</strong> in does not matter. Define <code class="docutils literal notranslate"><span class="pre">X2</span></code> before
+<code class="docutils literal notranslate"><span class="pre">X1</span></code> and the cascade still works.</p></li>
+<li><p>Cycles are detected: writing <code class="docutils literal notranslate"><span class="pre">X1</span> <span class="pre">:=</span> <span class="pre">X2</span> <span class="pre">+</span> <span class="pre">1</span></code> together with
+<code class="docutils literal notranslate"><span class="pre">X2</span> <span class="pre">:=</span> <span class="pre">X1</span> <span class="pre">+</span> <span class="pre">1</span></code> raises a <em>Circular dependency between descriptors:
+X1, X2</em> error instead of producing garbage.</p></li>
+<li><p>Per-descriptor error reporting: if one expression fails (e.g.
+<code class="docutils literal notranslate"><span class="pre">shift(unknown,</span> <span class="pre">-1)</span></code>), the error mentions the descriptor name so
+you know which row to fix.</p></li>
+<li><p>Time-window correctness is preserved through the chain: a chained
+<code class="docutils literal notranslate"><span class="pre">X2</span></code> that reads <code class="docutils literal notranslate"><span class="pre">X1</span></code> over a window keeps producing the right
+values even past Orange’s 5 000-row chunk boundary.</p></li>
+</ul>
+</section>
 <section id="workflow-persistence">
 <h2>Workflow persistence<a class="headerlink" href="#workflow-persistence" title="Link to this heading">¶</a></h2>
 <p>The editor list (“Variables to generate”) is the single source of truth.

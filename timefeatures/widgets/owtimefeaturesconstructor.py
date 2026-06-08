@@ -1377,28 +1377,17 @@ def run(data: Table, desc, use_values, task: TaskState) -> Result:
     if task.is_interruption_requested():
         raise CancelledError  # pragma: no cover
 
-    new_variables, new_metas = construct_variables(desc, data, use_values)
-    # Explicit cancellation point after `construct_variables` which can
-    # already run `compute_value`.
+    # ``construct_variables`` now cascades the transforms internally so
+    # chained expressions (X2 referencing a derived X1) work; it also
+    # returns the final table directly.
+    new_variables, new_metas, transformed = construct_variables(
+        desc, data, use_values
+    )
+
     if task.is_interruption_requested():
         raise CancelledError  # pragma: no cover
-    new_domain = Orange.data.Domain(
-        data.domain.attributes + new_variables,
-        data.domain.class_vars,
-        metas=data.domain.metas + new_metas
-    )
-    try:
-        for variable in new_variables:
-            variable.compute_value.mask_exceptions = False
-        try:
-            data = data.transform(new_domain)
-        except:
-            raise ValueError("Expression error.")
-    finally:
-        for variable in new_variables:
-            variable.compute_value.mask_exceptions = True
 
-    return Result(data, new_variables, new_metas, desc)
+    return Result(transformed, new_variables, new_metas, desc)
 
 
 def validate_exp(exp):
@@ -1474,17 +1463,143 @@ def validate_exp(exp):
         raise ValueError(exp)
 
 
+def _dependencies_for_descriptors(descriptions):
+    """Build the dependency graph between descriptors.
+
+    Returns a dict ``{descriptor.name: set(other_descriptor_names)}`` —
+    each set holds the names of *other* descriptors in ``descriptions``
+    whose sanitised identifier appears as a free variable in this
+    descriptor's expression. Self-references and references to source
+    columns are ignored.
+    """
+    sanitized_to_name = {
+        sanitized_name(d.name): d.name for d in descriptions
+    }
+    deps = {}
+    for desc in descriptions:
+        deps[desc.name] = set()
+        if not desc.expression or not desc.expression.strip():
+            continue
+        try:
+            exp_ast = ast.parse(desc.expression, mode="eval")
+        # ast.parse can raise arbitrary errors, not only SyntaxError.
+        # pylint: disable=broad-except
+        except Exception:
+            continue
+        for fname in freevars(exp_ast, []):
+            other = sanitized_to_name.get(fname)
+            if other is not None and other != desc.name:
+                deps[desc.name].add(other)
+    return deps
+
+
+def topological_sort_descriptors(descriptions):
+    """Return ``descriptions`` ordered so each descriptor comes after the
+    descriptors whose values it references in its expression.
+
+    Cyclic dependencies (e.g. ``X1 := X2 + 1`` and ``X2 := X1 + 1``)
+    raise :class:`ValueError`.
+    """
+    if not descriptions:
+        return []
+
+    order_index = {d.name: i for i, d in enumerate(descriptions)}
+    by_name = {d.name: d for d in descriptions}
+    deps = {name: set(s) for name, s in
+            _dependencies_for_descriptors(descriptions).items()}
+
+    # Kahn's algorithm. We break ties by the original input order so the
+    # output is deterministic and matches the user's expectations when
+    # the dependency graph has no constraints between two descriptors.
+    no_deps = [name for name, s in deps.items() if not s]
+    sorted_names = []
+    while no_deps:
+        no_deps.sort(key=order_index.get)
+        current = no_deps.pop(0)
+        sorted_names.append(current)
+        for other, other_deps in deps.items():
+            if other in sorted_names or current not in other_deps:
+                continue
+            other_deps.discard(current)
+            if not other_deps:
+                no_deps.append(other)
+
+    if len(sorted_names) != len(by_name):
+        cycle = sorted(set(by_name) - set(sorted_names))
+        raise ValueError(
+            "Circular dependency between descriptors: " + ", ".join(cycle)
+        )
+
+    return [by_name[n] for n in sorted_names]
+
+
 def construct_variables(descriptions, data, use_values=False):
-    # subs
+    """Build the new derived variables and the cumulatively transformed
+    table.
+
+    Descriptors are applied in dependency order (see
+    :func:`topological_sort_descriptors`), each one against the table
+    state produced by the previous steps. That makes expressions like
+    ``X2 := shift(X1, -1)`` work even when ``X1`` is itself a derived
+    variable defined a few lines above in the editor.
+
+    Returns
+    -------
+    variables : tuple[Orange.data.Variable]
+        Non-meta variables added by the descriptors, in dependency order.
+    metas : tuple[Orange.data.Variable]
+        Meta variables added by the descriptors, in dependency order.
+    transformed : Orange.data.Table
+        ``data`` after every descriptor has been applied. Equal to
+        ``data`` when ``descriptions`` is empty.
+    """
+    if not descriptions:
+        return (), (), data
+
+    sorted_descs = topological_sort_descriptors(descriptions)
 
     variables = []
     metas = []
-    source_vars = data.domain.variables + data.domain.metas
-    for desc in descriptions:
-        desc, func = bind_variable(desc, source_vars, data, use_values)
-        var = make_variable(desc, func)
-        [variables, metas][desc.meta].append(var)
-    return tuple(variables), tuple(metas)
+    current_data = data
+
+    for desc in sorted_descs:
+        env = (list(current_data.domain.variables)
+               + list(current_data.domain.metas))
+        new_desc, func = bind_variable(desc, env, current_data, use_values)
+        var = make_variable(new_desc, func)
+
+        # Within this step's transform we want the expression error to
+        # surface (the per-descriptor message is much more useful than a
+        # full column of NaNs); flip the flag back afterwards so the
+        # downstream uses of the variable behave like the original code.
+        func.mask_exceptions = False
+        try:
+            if new_desc.meta:
+                new_domain = Orange.data.Domain(
+                    current_data.domain.attributes,
+                    current_data.domain.class_vars,
+                    metas=tuple(current_data.domain.metas) + (var,),
+                )
+            else:
+                new_domain = Orange.data.Domain(
+                    tuple(current_data.domain.attributes) + (var,),
+                    current_data.domain.class_vars,
+                    metas=current_data.domain.metas,
+                )
+            current_data = current_data.transform(new_domain)
+        except Exception as ex:
+            raise ValueError(
+                f"Expression error in '{new_desc.name}': {ex}"
+            ) from ex
+        finally:
+            func.mask_exceptions = True
+
+        if new_desc.meta:
+            metas.append(var)
+        else:
+            variables.append(var)
+
+    return tuple(variables), tuple(metas), current_data
 
 
 def sanitized_name(name):

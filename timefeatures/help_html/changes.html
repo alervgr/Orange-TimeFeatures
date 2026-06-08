@@ -134,6 +134,16 @@ reading the second column.</p></li>
 </ul>
 <p><strong>Time Features Constructor</strong></p>
 <ul class="simple">
+<li><p><em>New:</em> <strong>chained descriptors</strong>. A descriptor can now reference
+another derived descriptor in its expression (e.g. <code class="docutils literal notranslate"><span class="pre">X2</span> <span class="pre">:=</span>
+<span class="pre">shift(X1,</span> <span class="pre">-1)</span></code> with <code class="docutils literal notranslate"><span class="pre">X1</span></code> itself defined a few rows above). The
+widget topologically sorts the descriptors and cascades the
+transforms — each step runs against the table state produced by
+the previous one, so <code class="docutils literal notranslate"><span class="pre">X2</span></code> sees <code class="docutils literal notranslate"><span class="pre">X1</span></code> as a regular column.
+Cycles (e.g. <code class="docutils literal notranslate"><span class="pre">X1</span> <span class="pre">:=</span> <span class="pre">X2</span> <span class="pre">+</span> <span class="pre">1</span></code> together with <code class="docutils literal notranslate"><span class="pre">X2</span> <span class="pre">:=</span> <span class="pre">X1</span> <span class="pre">+</span> <span class="pre">1</span></code>) raise
+a <em>Circular dependency between descriptors: X1, X2</em> error. Errors
+during evaluation are reported per-descriptor so the failing row is
+obvious.</p></li>
 <li><p><em>Fixed (critical):</em> time-window functions used to lose context every
 5 000 rows because Orange chunks tables during <code class="docutils literal notranslate"><span class="pre">transform</span></code>. The
 widget now caches the full source per <code class="docutils literal notranslate"><span class="pre">FeatureFunc</span></code> and returns the

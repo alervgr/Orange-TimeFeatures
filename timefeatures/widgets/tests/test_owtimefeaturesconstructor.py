@@ -16,6 +16,7 @@ from timefeatures.widgets.owtimefeaturesconstructor import (
     ContinuousDescriptor,
     FeatureFunc,
     bind_variable,
+    construct_variables,
     count_function,
     make_variable,
     max_function,
@@ -26,6 +27,7 @@ from timefeatures.widgets.owtimefeaturesconstructor import (
     sd_function,
     shift_function,
     sum_function,
+    topological_sort_descriptors,
 )
 
 
@@ -364,6 +366,186 @@ class TestFeatureFuncEvalSafety(unittest.TestCase):
         result = func(data)
         self.assertEqual(result[0], 4)  # |1 - 5| = 4
         self.assertEqual(result[1], 3)  # |2 - 5| = 3
+
+
+# --------------------------------------------------------------------- #
+#  Chained descriptors — X2 referencing X1
+# --------------------------------------------------------------------- #
+class TestTopologicalSortDescriptors(unittest.TestCase):
+    @staticmethod
+    def _desc(name, expression):
+        return ContinuousDescriptor(
+            name=name, expression=expression, meta=False,
+            number_of_decimals=3,
+        )
+
+    def _names(self, sorted_descs):
+        return [d.name for d in sorted_descs]
+
+    def test_no_dependencies_preserves_input_order(self):
+        d1 = self._desc("X1", "a + 1")
+        d2 = self._desc("X2", "b * 2")
+        self.assertEqual(
+            self._names(topological_sort_descriptors([d1, d2])),
+            ["X1", "X2"],
+        )
+
+    def test_simple_chain_input_order(self):
+        d1 = self._desc("X1", "a + 1")
+        d2 = self._desc("X2", "X1 * 2")
+        self.assertEqual(
+            self._names(topological_sort_descriptors([d1, d2])),
+            ["X1", "X2"],
+        )
+
+    def test_simple_chain_reverse_input_order(self):
+        # User added X2 first by mistake, then X1. Topo sort puts the
+        # dependency first.
+        d1 = self._desc("X1", "a + 1")
+        d2 = self._desc("X2", "X1 * 2")
+        self.assertEqual(
+            self._names(topological_sort_descriptors([d2, d1])),
+            ["X1", "X2"],
+        )
+
+    def test_transitive_chain(self):
+        d1 = self._desc("X1", "a + 1")
+        d2 = self._desc("X2", "X1 * 2")
+        d3 = self._desc("X3", "X2 + 1")
+        self.assertEqual(
+            self._names(topological_sort_descriptors([d3, d2, d1])),
+            ["X1", "X2", "X3"],
+        )
+
+    def test_cycle_raises_value_error(self):
+        d1 = self._desc("X1", "X2 + 1")
+        d2 = self._desc("X2", "X1 + 1")
+        with self.assertRaises(ValueError) as cm:
+            topological_sort_descriptors([d1, d2])
+        self.assertIn("Circular dependency", str(cm.exception))
+        self.assertIn("X1", str(cm.exception))
+        self.assertIn("X2", str(cm.exception))
+
+    def test_invalid_expression_is_treated_as_no_dependency(self):
+        # Syntactically invalid: ast.parse raises, so no deps recorded.
+        d_bad = self._desc("X1", "this is not valid")
+        d_good = self._desc("X2", "X1 + 1")
+        self.assertEqual(
+            self._names(topological_sort_descriptors([d_bad, d_good])),
+            ["X1", "X2"],
+        )
+
+    def test_empty_expression_is_treated_as_no_dependency(self):
+        d_empty = self._desc("X1", "")
+        d_good = self._desc("X2", "X1 + 1")
+        self.assertEqual(
+            self._names(topological_sort_descriptors([d_empty, d_good])),
+            ["X1", "X2"],
+        )
+
+    def test_self_reference_is_not_a_cycle(self):
+        # ``X1 := shift(X1, -1)`` references the source-column X1 (if it
+        # exists). We don't treat that as a self-dependency.
+        d = self._desc("X1", "shift(X1, -1)")
+        self.assertEqual(
+            self._names(topological_sort_descriptors([d])),
+            ["X1"],
+        )
+
+    def test_empty_input(self):
+        self.assertEqual(topological_sort_descriptors([]), [])
+
+
+class TestConstructVariablesChained(unittest.TestCase):
+    """End-to-end: construct_variables now cascades, so X2 can read X1
+    even though X1 is itself a derived variable."""
+
+    @staticmethod
+    def _build_data(rows):
+        domain = Orange.data.Domain([Orange.data.ContinuousVariable("a")])
+        return Orange.data.Table.from_numpy(
+            domain, np.array(rows, dtype=float).reshape(-1, 1)
+        )
+
+    def test_chained_simple(self):
+        # X1 = a + 1; X2 = X1 * 2.
+        data = self._build_data([1.0, 2.0, 3.0])
+        d1 = ContinuousDescriptor(
+            name="X1", expression="a + 1", meta=False,
+            number_of_decimals=3,
+        )
+        d2 = ContinuousDescriptor(
+            name="X2", expression="X1 * 2", meta=False,
+            number_of_decimals=3,
+        )
+
+        # Input order: X2 BEFORE X1 → cascade must topo-sort.
+        variables, metas, transformed = construct_variables(
+            [d2, d1], data, use_values=False
+        )
+
+        # Both variables produced (and X1 appears before X2 in the order).
+        self.assertEqual([v.name for v in variables], ["X1", "X2"])
+        self.assertEqual(metas, ())
+
+        # Values cascade correctly.
+        np.testing.assert_array_equal(
+            np.asarray(transformed.get_column("X1")),
+            np.array([2.0, 3.0, 4.0]),
+        )
+        np.testing.assert_array_equal(
+            np.asarray(transformed.get_column("X2")),
+            np.array([4.0, 6.0, 8.0]),
+        )
+
+    def test_chained_with_time_function_across_chunk_boundary(self):
+        # X1 = shift(a, -1) and X2 = X1 + 1 over a 12 000-row table
+        # forces the 5 000-row chunking path inside Orange's transform.
+        # Both the chaining (X2 reads derived X1) and the chunking fix
+        # (FeatureFunc._full_source caching) must hold.
+        n = 12_000
+        data = self._build_data(np.arange(n).tolist())
+
+        # Note: the time-function regex inside FeatureFunc does NOT allow
+        # whitespace between the args — that matches what the editor's
+        # combobox inserts, so the user never sees the difference.
+        d1 = ContinuousDescriptor(
+            name="X1", expression="shift(a,-1)", meta=False,
+            number_of_decimals=3,
+        )
+        d2 = ContinuousDescriptor(
+            name="X2", expression="X1 + 1", meta=False,
+            number_of_decimals=3,
+        )
+
+        variables, _, transformed = construct_variables(
+            [d1, d2], data, use_values=False
+        )
+
+        self.assertEqual([v.name for v in variables], ["X1", "X2"])
+
+        # X1[i] = a[i-1] = i-1 for i >= 1, NaN for i = 0.
+        x1 = np.asarray(transformed.get_column("X1"), dtype=float)
+        self.assertTrue(np.isnan(x1[0]))
+        np.testing.assert_array_equal(
+            x1[1:], np.arange(n - 1, dtype=float),
+        )
+
+        # X2[i] = X1[i] + 1 = i for i >= 1, NaN for i = 0.
+        x2 = np.asarray(transformed.get_column("X2"), dtype=float)
+        self.assertTrue(np.isnan(x2[0]))
+        np.testing.assert_array_equal(
+            x2[1:], np.arange(1, n, dtype=float),
+        )
+
+    def test_empty_descriptors_returns_input_unchanged(self):
+        data = self._build_data([1.0, 2.0])
+        variables, metas, transformed = construct_variables(
+            [], data, use_values=False
+        )
+        self.assertEqual(variables, ())
+        self.assertEqual(metas, ())
+        self.assertIs(transformed, data)
 
 
 if __name__ == "__main__":

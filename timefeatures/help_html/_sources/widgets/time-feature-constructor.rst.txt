@@ -144,6 +144,33 @@ returns the appropriate slice for each chunk, so a call like
 ``shift(x, -20)`` keeps the right value across chunk boundaries even on
 multi-million-row tables.
 
+Chained descriptors
+-------------------
+
+Descriptors may reference each other. For example:
+
+.. code-block:: python
+
+   X1 := shift(price, -1)
+   X2 := X1 + bias
+
+When this happens, the widget topologically sorts the descriptors by
+their dependencies and applies them in cascade — each transform step
+runs against the table state produced by the previous step, so ``X2``
+sees ``X1`` as if it were a regular source column.
+
+- The order you click **New** in does not matter. Define ``X2`` before
+  ``X1`` and the cascade still works.
+- Cycles are detected: writing ``X1 := X2 + 1`` together with
+  ``X2 := X1 + 1`` raises a *Circular dependency between descriptors:
+  X1, X2* error instead of producing garbage.
+- Per-descriptor error reporting: if one expression fails (e.g.
+  ``shift(unknown, -1)``), the error mentions the descriptor name so
+  you know which row to fix.
+- Time-window correctness is preserved through the chain: a chained
+  ``X2`` that reads ``X1`` over a window keeps producing the right
+  values even past Orange's 5 000-row chunk boundary.
+
 Workflow persistence
 --------------------
 

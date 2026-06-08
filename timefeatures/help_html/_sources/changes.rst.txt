@@ -42,6 +42,16 @@ Unreleased
 
 **Time Features Constructor**
 
+- *New:* **chained descriptors**. A descriptor can now reference
+  another derived descriptor in its expression (e.g. ``X2 :=
+  shift(X1, -1)`` with ``X1`` itself defined a few rows above). The
+  widget topologically sorts the descriptors and cascades the
+  transforms — each step runs against the table state produced by
+  the previous one, so ``X2`` sees ``X1`` as a regular column.
+  Cycles (e.g. ``X1 := X2 + 1`` together with ``X2 := X1 + 1``) raise
+  a *Circular dependency between descriptors: X1, X2* error. Errors
+  during evaluation are reported per-descriptor so the failing row is
+  obvious.
 - *Fixed (critical):* time-window functions used to lose context every
   5 000 rows because Orange chunks tables during ``transform``. The
   widget now caches the full source per ``FeatureFunc`` and returns the
