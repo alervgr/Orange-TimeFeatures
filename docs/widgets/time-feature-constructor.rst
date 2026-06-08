@@ -1,8 +1,7 @@
 Time Features Constructor
 =========================
 
-Constructs new numeric variables from the input data using Python-style
-expressions and time-window functions.
+The **Time Features Constructor** constructs new numeric variables from the input data using Python-style expressions and time-window functions. It is an essential tool for time-series feature engineering, allowing you to easily compute rolling statistics, lagged variables, and custom mathematical transformations.
 
 Inputs
 ------
@@ -18,8 +17,7 @@ Inputs
      - Source table used to evaluate expressions.
    * - Variable Definitions
      - ``Orange.data.Table``
-     - Optional configuration table with ``Variable`` and ``Expression``
-       columns.
+     - Optional configuration table containing predefined ``Variable`` and ``Expression`` columns.
 
 Outputs
 -------
@@ -32,30 +30,29 @@ Outputs
      - Description
    * - Data
      - ``Orange.data.Table``
-     - Input table transformed with the generated variables.
+     - The transformed input table, appended with the newly generated variables.
    * - Variable Definitions
      - ``Orange.data.Table``
-     - Configuration table describing original and generated variables.
+     - A configuration table describing both the original and generated variables. This can be passed to other widgets like the **Variable Dependency Graph**.
 
-Controls
---------
+Description
+-----------
 
-``New`` creates a new numeric variable definition. ``Remove`` deletes the
-selected definition, and ``Reset`` clears the widget state. ``Send``
-evaluates the current definitions and sends the transformed data.
+The widget interface consists of an editor where you can define new variables. 
 
-The editor contains a variable name, a meta-variable toggle, an expression
-field, a selector for source variables, a selector for standard functions,
-and a selector for time functions.
+- **New** creates a new numeric variable definition. 
+- **Remove** deletes the selected definition.
+- **Reset** clears the widget state back to default. 
+- **Send** evaluates the current definitions and sends the transformed data to the output.
+
+The editor contains a variable name field, a meta-variable toggle, an expression field, a selector for source variables, a selector for standard functions, and a selector for time functions.
 
 Expressions
 -----------
 
-Expressions can reference variables from the original input domain. Variable
-names are sanitized like Python identifiers: spaces and punctuation become
-underscores, and names that start with a digit get a leading underscore.
+Expressions can reference variables from the original input domain. Variable names are sanitized to be valid Python identifiers: spaces and punctuation become underscores, and names that start with a digit receive a leading underscore.
 
-Examples:
+**Examples:**
 
 .. code-block:: python
 
@@ -64,12 +61,12 @@ Examples:
    shift(age, -20)
    mean(temperature, -2, 2)
 
-Standard Python built-ins such as ``abs``, ``int``, ``float`` and ``pow``
-are available, together with public functions from Python's ``math`` module
-and selected random/nan helpers.
+Standard Python built-ins such as ``abs``, ``int``, ``float`` and ``pow`` are available. Additionally, public functions from Python's ``math`` module and selected random/nan helpers can be used directly in your expressions.
 
 Time Functions
 --------------
+
+The widget provides specialized time-window functions for sequential data.
 
 .. list-table::
    :header-rows: 1
@@ -77,8 +74,7 @@ Time Functions
    * - Function
      - Description
    * - ``shift(var, offset)``
-     - Value of ``var`` at the row shifted by ``offset``. Out-of-range rows
-       become missing values.
+     - Value of ``var`` at the row shifted by ``offset``. Out-of-range rows become missing values.
    * - ``sum(var, start, end)``
      - Sum of non-missing values in the inclusive offset window.
    * - ``mean(var, start, end)``
@@ -92,9 +88,18 @@ Time Functions
    * - ``sd(var, start, end)``
      - Standard deviation in the inclusive offset window.
 
+Usage Example
+-------------
+
+If you have a dataset with a ``temperature`` variable recorded daily, you can create a 3-day rolling average feature by adding a new variable with the expression:
+
+.. code-block:: python
+
+   mean(temperature, -2, 0)
+
+This will compute the mean of the temperature for the current day and the two preceding days.
+
 Notes
 -----
 
-The widget re-evaluates definitions from the original input table. This
-prevents repeated sends from accumulating previously generated variables as
-new source columns.
+The widget re-evaluates definitions from the original input table on every change. This prevents repeated sends from accumulating previously generated variables as new source columns, ensuring a clean and reproducible transformation pipeline.

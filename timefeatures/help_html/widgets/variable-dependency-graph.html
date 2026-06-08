@@ -35,8 +35,7 @@
             
   <section id="variable-dependency-graph">
 <h1>Variable Dependency Graph<a class="headerlink" href="#variable-dependency-graph" title="Link to this heading">¶</a></h1>
-<p>Builds a directed network from a variable-definition table. Each edge means
-that one variable expression references another variable.</p>
+<p>The <strong>Variable Dependency Graph</strong> widget builds and visualizes a directed network graph from a variable-definition table. Each directed edge in the graph indicates that one variable’s expression references another variable, making it easy to trace feature dependencies.</p>
 <section id="inputs">
 <h2>Inputs<a class="headerlink" href="#inputs" title="Link to this heading">¶</a></h2>
 <table class="docutils align-default">
@@ -49,8 +48,7 @@ that one variable expression references another variable.</p>
 <tbody>
 <tr class="row-even"><td><p>Variable Definitions</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">Orange.data.Table</span></code></p></td>
-<td><p>Table with <code class="docutils literal notranslate"><span class="pre">Variable</span></code> and <code class="docutils literal notranslate"><span class="pre">Expression</span></code> columns, usually produced
-by <strong>Time Features Constructor</strong>.</p></td>
+<td><p>A table containing <code class="docutils literal notranslate"><span class="pre">Variable</span></code> and <code class="docutils literal notranslate"><span class="pre">Expression</span></code> columns. This is usually produced by the <strong>Time Features Constructor</strong> widget’s second output.</p></td>
 </tr>
 </tbody>
 </table>
@@ -67,18 +65,20 @@ by <strong>Time Features Constructor</strong>.</p></td>
 <tbody>
 <tr class="row-even"><td><p>Network</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">orangecontrib.network.Network</span></code></p></td>
-<td><p>Directed dependency graph.</p></td>
+<td><p>A directed dependency graph representing how variables relate to one another.</p></td>
 </tr>
 </tbody>
 </table>
 </section>
 <section id="how-it-works">
 <h2>How It Works<a class="headerlink" href="#how-it-works" title="Link to this heading">¶</a></h2>
-<p>Rows without an expression are treated as original variables. Rows with an
-expression are treated as derived variables. The widget scans each
-expression for references to known variable names and creates one directed
-edge per dependency.</p>
-<p>The output network stores node metadata:</p>
+<p>The widget processes the input table row by row:</p>
+<ul class="simple">
+<li><p>Rows without an expression are treated as <strong>original variables</strong> (source features).</p></li>
+<li><p>Rows with an expression are treated as <strong>derived variables</strong> (calculated features).</p></li>
+</ul>
+<p>The widget scans each expression for references to known variable names and creates one directed edge per dependency (from the referenced variable to the derived variable).</p>
+<p>The output network stores metadata for each node, which can be used for styling in downstream network visualization widgets:</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Meta Variable</p></th>
@@ -87,25 +87,31 @@ edge per dependency.</p>
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">var_name</span></code></p></td>
-<td><p>Variable name.</p></td>
+<td><p>The name of the variable.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">var_type</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">Derived</span></code> for generated variables or <code class="docutils literal notranslate"><span class="pre">Original</span></code> for source
-variables.</p></td>
+<td><p>Categorized as <code class="docutils literal notranslate"><span class="pre">Derived</span></code> for generated variables or <code class="docutils literal notranslate"><span class="pre">Original</span></code> for source variables.</p></td>
 </tr>
 </tbody>
 </table>
 </section>
 <section id="controls">
 <h2>Controls<a class="headerlink" href="#controls" title="Link to this heading">¶</a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">Generate</span></code> rebuilds the graph from the current configuration table. The
-widget also generates automatically when valid input arrives.</p>
+<ul class="simple">
+<li><p><strong>Generate</strong>: Rebuilds the graph from the current configuration table. The widget also generates the graph automatically when valid new input arrives.</p></li>
+</ul>
 </section>
 <section id="input-requirements">
 <h2>Input Requirements<a class="headerlink" href="#input-requirements" title="Link to this heading">¶</a></h2>
-<p>The input table must contain the first two columns named exactly
-<code class="docutils literal notranslate"><span class="pre">Variable</span></code> and <code class="docutils literal notranslate"><span class="pre">Expression</span></code>. If these columns are missing or renamed,
-the widget reports an error and sends no network.</p>
+<p>The input table <strong>must</strong> contain the first two columns named exactly <code class="docutils literal notranslate"><span class="pre">Variable</span></code> and <code class="docutils literal notranslate"><span class="pre">Expression</span></code>. If these columns are missing or have been renamed, the widget will report an error and will not send any network output.</p>
+</section>
+<section id="usage-example">
+<h2>Usage Example<a class="headerlink" href="#usage-example" title="Link to this heading">¶</a></h2>
+<ol class="arabic simple">
+<li><p>Connect the <strong>Variable Definitions</strong> output of a <strong>Time Features Constructor</strong> widget to the input of the <strong>Variable Dependency Graph</strong>.</p></li>
+<li><p>Connect the <strong>Network</strong> output of this widget to the <strong>Network Explorer</strong> widget (from the Orange Network add-on).</p></li>
+<li><p>In the <strong>Network Explorer</strong>, you can color the nodes by <code class="docutils literal notranslate"><span class="pre">var_type</span></code> to visually distinguish your original dataset features from your newly constructed time features, and see exactly how they depend on each other.</p></li>
+</ol>
 </section>
 </section>
 

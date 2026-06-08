@@ -1,8 +1,7 @@
 Save to DB
 ==========
 
-Saves an Orange data table into a SQL database supported by Orange's SQL
-backend layer.
+The **Save to DB** widget saves an Orange data table into a SQL database. It relies on Orange's SQL backend layer to seamlessly upload your datasets for persistent storage and further querying.
 
 Inputs
 ------
@@ -15,19 +14,19 @@ Inputs
      - Description
    * - Data
      - ``Orange.data.Table``
-     - Dataset to upload.
+     - The dataset you wish to upload to the database.
 
 Outputs
 -------
 
-This widget has no output signals.
+This widget has no output signals. It acts as an endpoint in your data pipeline.
 
 Controls
 --------
 
-The widget shows the detected class type, row count and column count for
-the input table. Connection fields are inherited from Orange's SQL base
-widget. The TimeFeatures-specific fields are:
+The widget displays the detected class type, row count, and column count for the input table. Connection fields (such as Host, Port, Database, User, and Password) are inherited from Orange's SQL base widget.
+
+The TimeFeatures-specific fields are:
 
 .. list-table::
    :header-rows: 1
@@ -35,18 +34,16 @@ widget. The TimeFeatures-specific fields are:
    * - Field
      - Description
    * - Table name
-     - Destination table name. It must start with a letter or underscore and
-       contain only letters, digits and underscores, up to 63 characters.
+     - The destination table name in the database. It must start with a letter or underscore and contain only letters, digits, and underscores, up to 63 characters.
    * - Email
-     - Optional notification address used after a successful upload.
+     - An optional notification email address used to send an alert after a successful data upload.
 
-``Save`` creates or updates the metadata table named ``datasets`` and then
-creates the destination table for the uploaded data.
+Clicking **Save** creates or updates a metadata table named ``datasets`` and then creates the destination table for the uploaded data.
 
 Database Behavior
 -----------------
 
-The widget maps Orange variable types to SQL column types:
+When uploading data, the widget automatically maps Orange variable types to appropriate SQL column types:
 
 .. list-table::
    :header-rows: 1
@@ -65,6 +62,18 @@ The widget maps Orange variable types to SQL column types:
 Validation
 ----------
 
-Before saving, the widget checks that a table name is present, that the
-table name is SQL-safe, that host and database fields are present, and that
-the optional email field has a valid email format.
+Before attempting to save the data, the widget performs several validation checks:
+
+- Verifies that a table name is provided.
+- Ensures the table name is SQL-safe (avoids SQL injection or syntax errors).
+- Checks that the required host and database connection fields are present.
+- Validates the optional email field to ensure it has a correct email format.
+
+Usage Example
+-------------
+
+1. Connect a **File** widget (or any widget outputting data) to the **Save to DB** widget.
+2. Enter your database connection details (Host, Database, Username, Password).
+3. Specify a valid **Table name** (e.g., ``my_time_series_data``).
+4. Optionally, provide an **Email** to receive a notification upon completion.
+5. Click **Save** to upload your dataset.
