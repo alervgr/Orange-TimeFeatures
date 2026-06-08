@@ -1,8 +1,15 @@
-import Orange
-from AnyQt.QtWidgets import QComboBox
-from AnyQt.QtCore import Qt
+import re
+import smtplib
+import ssl
+import time
+from contextlib import contextmanager
 from datetime import datetime
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
+import Orange
+from AnyQt.QtCore import Qt
+from AnyQt.QtWidgets import QComboBox
 from Orange.data import Table
 from Orange.data.sql.backend import Backend
 from Orange.data.sql.backend.base import BackendError
@@ -13,26 +20,161 @@ from Orange.widgets.utils.owbasesql import OWBaseSql
 from Orange.widgets.utils.sql import check_sql_input
 from Orange.widgets.utils.widgetpreview import WidgetPreview
 from Orange.widgets.widget import Msg, OWWidget
-from PyQt5.QtWidgets import QGridLayout, QLineEdit, QPushButton, QSizePolicy, QLabel
+from PyQt5.QtWidgets import (
+    QGridLayout, QLabel, QLineEdit, QPushButton, QSizePolicy,
+)
 from orangewidget.utils.signals import Input
-
-import re
-
-import smtplib, ssl, time
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 MAX_DL_LIMIT = 1000000
 
+# PostgreSQL identifier rules: letter/underscore start, alphanumeric/_, max 63.
+# MySQL identifier rules are looser (allow digit start, 64 chars) but accepting
+# this subset works on both dialects.
 TABLE_NAME_REGEX = re.compile(r'^[A-Za-z_][A-Za-z0-9_]{0,62}$')
 
 
 def quote_ident(name):
+    """PostgreSQL-style identifier quoting. Kept at module level for the
+    test suite; widget code goes through ``self.dialect.quote_ident``."""
     return '"' + str(name).replace('"', '""') + '"'
 
 
 def is_postgres(backend):
     return getattr(backend, 'display_name', '') == "PostgreSQL"
+
+
+# --------------------------------------------------------------------- #
+#  Dialect abstraction
+# --------------------------------------------------------------------- #
+class _Dialect:
+    """Per-RDBMS SQL differences (identifier quoting, column types) plus a
+    factory that returns an object with ``execute_sql_query(query, params)``
+    matching Orange's Backend interface."""
+
+    name = ""
+
+    @staticmethod
+    def quote_ident(name):  # pragma: no cover - abstract
+        raise NotImplementedError
+
+    @staticmethod
+    def column_type(var):  # pragma: no cover - abstract
+        raise NotImplementedError
+
+    def backend_factory(self):  # pragma: no cover - abstract
+        raise NotImplementedError
+
+
+class _PostgresDialect(_Dialect):
+    name = "PostgreSQL"
+
+    @staticmethod
+    def quote_ident(name):
+        return '"' + str(name).replace('"', '""') + '"'
+
+    @staticmethod
+    def column_type(var):
+        # TimeVariable must be checked before ContinuousVariable because
+        # in Orange the former inherits from the latter.
+        if isinstance(var, Orange.data.TimeVariable):
+            return "TIMESTAMP"
+        if isinstance(var, Orange.data.DiscreteVariable):
+            return "VARCHAR(255)"
+        if isinstance(var, Orange.data.ContinuousVariable):
+            return "DOUBLE PRECISION"
+        if isinstance(var, Orange.data.StringVariable):
+            return "TEXT"
+        return "TEXT"
+
+    def backend_factory(self):
+        for backend in Backend.available_backends():
+            if backend.display_name == "PostgreSQL":
+                return backend
+        return None
+
+
+class _MySQLDialect(_Dialect):
+    name = "MySQL"
+
+    @staticmethod
+    def quote_ident(name):
+        # MySQL quotes identifiers with backticks; escape internal backticks
+        # by doubling.
+        return '`' + str(name).replace('`', '``') + '`'
+
+    @staticmethod
+    def column_type(var):
+        # TimeVariable must be checked before ContinuousVariable because
+        # in Orange the former inherits from the latter.
+        if isinstance(var, Orange.data.TimeVariable):
+            # TIMESTAMP in MySQL is limited to 1970-2038; DATETIME is wider.
+            return "DATETIME"
+        if isinstance(var, Orange.data.DiscreteVariable):
+            return "VARCHAR(255)"
+        if isinstance(var, Orange.data.ContinuousVariable):
+            # MySQL's FLOAT(10) means (precision, scale); plain DOUBLE is
+            # what users actually want.
+            return "DOUBLE"
+        if isinstance(var, Orange.data.StringVariable):
+            return "TEXT"
+        return "TEXT"
+
+    def backend_factory(self):
+        return _MySQLBackend
+
+
+class _MySQLBackend:
+    """Minimal Backend-compatible wrapper around ``pymysql``.
+
+    The widget only writes, so we don't implement the full Backend
+    introspection API — just what ``execute_sql_query(query, params)``
+    needs to be a drop-in for ``self.backend`` in ``owsavetodb``.
+    """
+
+    display_name = "MySQL"
+
+    def __init__(self, params):
+        try:
+            import pymysql  # noqa: WPS433 - optional dep, imported lazily
+        except ImportError as ex:
+            raise BackendError(
+                "MySQL support requires the 'pymysql' package. "
+                "Install it with: pip install pymysql"
+            ) from ex
+
+        try:
+            self.conn = pymysql.connect(
+                host=params.get("host") or "localhost",
+                port=int(params.get("port") or 3306),
+                user=params.get("user"),
+                password=params.get("password") or "",
+                database=params.get("database"),
+                autocommit=False,
+            )
+        except Exception as ex:
+            raise BackendError(str(ex)) from ex
+
+    @contextmanager
+    def execute_sql_query(self, query, params=None):
+        cursor = self.conn.cursor()
+        try:
+            if params:
+                cursor.execute(query, tuple(params))
+            else:
+                cursor.execute(query)
+            self.conn.commit()
+            yield cursor
+        except Exception as ex:
+            self.conn.rollback()
+            raise BackendError(str(ex)) from ex
+        finally:
+            cursor.close()
+
+
+_DIALECTS = {
+    "PostgreSQL": _PostgresDialect(),
+    "MySQL": _MySQLDialect(),
+}
 
 
 class BackendModel(PyListModel):
@@ -48,7 +190,7 @@ class owsavetodb(OWBaseSql, OWWidget):
     description = "Save a dataset into a DB."
     icon = "icons/savedatadb.svg"
     priority = 2241
-    keywords = "sql table, save, data, db, dataset"
+    keywords = "sql table, save, data, db, dataset, postgres, postgresql, mysql"
 
     class Inputs:
         data = Input("Data", Orange.data.Table)
@@ -58,7 +200,9 @@ class owsavetodb(OWBaseSql, OWWidget):
 
     settings_version = 2
     buttons_area_orientation = None
-    selected_backend = Setting(None)
+    # The selected dialect ("PostgreSQL" or "MySQL"). Defaults to PostgreSQL
+    # so old workflows behave the same.
+    selected_backend = Setting("PostgreSQL")
     sql = Setting("")
 
     class Warning(OWBaseSql.Warning):
@@ -69,13 +213,19 @@ class owsavetodb(OWBaseSql, OWWidget):
 
     def __init__(self):
         # Lint
-        self.backends = None
         self.backendcombo = None
         self.data = None
         self.rows = 0
         self.cols = 0
         self.target = None
         super().__init__()
+
+    # ------------------------------------------------------------------ #
+    #  Dialect handling
+    # ------------------------------------------------------------------ #
+    @property
+    def dialect(self):
+        return _DIALECTS.get(self.selected_backend, _DIALECTS["PostgreSQL"])
 
     def update_labels(self):
         self.target_label.setText("Class: " + str(self.target))
@@ -138,32 +288,33 @@ class owsavetodb(OWBaseSql, OWWidget):
 
     def _add_backend_controls(self):
         box = self.serverbox
-        self.backends = BackendModel(Backend.available_backends())
         self.backendcombo = QComboBox(box)
-        if self.backends:
-            self.backendcombo.setModel(self.backends)
-            names = [backend.display_name for backend in self.backends]
-            if self.selected_backend and self.selected_backend in names:
-                self.backendcombo.setCurrentText(self.selected_backend)
+        for name in _DIALECTS:
+            self.backendcombo.addItem(name)
+        if self.selected_backend in _DIALECTS:
+            self.backendcombo.setCurrentText(self.selected_backend)
         else:
-            self.Error.no_backends()
-            box.setEnabled(False)
+            self.selected_backend = "PostgreSQL"
+            self.backendcombo.setCurrentText("PostgreSQL")
         self.backendcombo.currentTextChanged.connect(self.__backend_changed)
         box.layout().insertWidget(0, self.backendcombo)
 
     def __backend_changed(self):
-        backend = self.get_backend()
-        self.selected_backend = backend.display_name if backend else None
+        self.selected_backend = self.backendcombo.currentText()
 
+    # ------------------------------------------------------------------ #
+    #  Data persistence
+    # ------------------------------------------------------------------ #
     def create_master_table(self):
+        qi = self.dialect.quote_ident
         query = f"""
-        CREATE TABLE IF NOT EXISTS datasets (
-            name VARCHAR(30) PRIMARY KEY NOT NULL,
-            datetime TIMESTAMP NOT NULL,
-            rows INT NOT NULL,
-            cols INT NOT NULL,
-            class VARCHAR(30),
-            class_name VARCHAR(30)
+        CREATE TABLE IF NOT EXISTS {qi('datasets')} (
+            {qi('name')} VARCHAR(63) PRIMARY KEY NOT NULL,
+            {qi('datetime')} TIMESTAMP NOT NULL,
+            {qi('rows')} INT NOT NULL,
+            {qi('cols')} INT NOT NULL,
+            {qi('class')} VARCHAR(30),
+            {qi('class_name')} VARCHAR(63)
         )
         """
         try:
@@ -195,20 +346,13 @@ class owsavetodb(OWBaseSql, OWWidget):
 
             variables.append(self.data.domain[i])
 
-        create_table_query = f"CREATE TABLE {quote_ident(table_name)} ("
-        for variable in variables:
-            col = quote_ident(variable.name)
-            if isinstance(variable, Orange.data.DiscreteVariable):
-                create_table_query += f'{col} VARCHAR,'
-            elif isinstance(variable, Orange.data.ContinuousVariable):
-                create_table_query += f'{col} FLOAT(10),'
-            elif isinstance(variable, Orange.data.TimeVariable):
-                create_table_query += f'{col} TIMESTAMP,'
-            elif isinstance(variable, Orange.data.StringVariable):
-                create_table_query += f'{col} VARCHAR,'
-
-        create_table_query = create_table_query[:-1]
-        create_table_query += ")"
+        qi = self.dialect.quote_ident
+        ct = self.dialect.column_type
+        col_defs = ", ".join(
+            f"{qi(variable.name)} {ct(variable)}"
+            for variable in variables
+        )
+        create_table_query = f"CREATE TABLE {qi(table_name)} ({col_defs})"
 
         try:
             with self.backend.execute_sql_query(create_table_query):
@@ -216,11 +360,10 @@ class owsavetodb(OWBaseSql, OWWidget):
         except BackendError as ex:
             self.Error.connection(str(ex))
 
-        insert_query = f"INSERT INTO {quote_ident(table_name)} VALUES ("
-        for i in range(len(variables)):
-            insert_query += "%s,"
-        insert_query = insert_query[:-1]  # Eliminar la coma final
-        insert_query += ")"
+        placeholders = ", ".join(["%s"] * len(variables))
+        insert_query = (
+            f"INSERT INTO {qi(table_name)} VALUES ({placeholders})"
+        )
 
         for instance in self.data:
             data_row = []
@@ -233,8 +376,8 @@ class owsavetodb(OWBaseSql, OWWidget):
                 data_row.append(instance[i].value)
             if self.data.domain.class_var:
                 class_value = data_row[-1]  # Obtiene el valor de la clase
-                del data_row[-1]  # Elimina la clase de su posición anterior
-                data_row.insert(0, class_value)  # Inserta la clase al principio de la lista
+                del data_row[-1]            # Elimina la clase de su posición anterior
+                data_row.insert(0, class_value)  # Inserta la clase al principio
             try:
                 with self.backend.execute_sql_query(insert_query, params=data_row):
                     pass
@@ -291,6 +434,7 @@ class owsavetodb(OWBaseSql, OWWidget):
                 </ul>
                 <p>-Connection information:</p>
                 <ul>
+                    <li>Backend: {self.selected_backend}.</li>
                     <li>Server: {str(self.servertext.text())}.</li>
                     <li>Database name: {str(self.databasetext.text())}.</li>
                     <li>Time Elapsed: {str(time_elapsed)}s.</li>
@@ -344,9 +488,13 @@ class owsavetodb(OWBaseSql, OWWidget):
             class_name = None
 
         table_name = self.tableName.text().lower()
+        qi = self.dialect.quote_ident
+        # No schema qualifier: works in PostgreSQL (uses `public` by default)
+        # and in MySQL (no schema concept).
         query = (
-            "INSERT INTO public.datasets "
-            "(name, datetime, rows, cols, class, class_name) "
+            f"INSERT INTO {qi('datasets')} "
+            f"({qi('name')}, {qi('datetime')}, {qi('rows')}, "
+            f"{qi('cols')}, {qi('class')}, {qi('class_name')}) "
             "VALUES (%s, %s, %s, %s, %s, %s)"
         )
         params = [
@@ -372,9 +520,14 @@ class owsavetodb(OWBaseSql, OWWidget):
         self.databasetext.setStyleSheet(err['database' in text])
 
     def get_backend(self):
-        if self.backendcombo.currentIndex() < 0:
+        """OWBaseSql calls this from ``connect()`` to obtain a callable
+        ``backend(params)`` that returns an object exposing
+        ``execute_sql_query``. We delegate to the active dialect."""
+        factory = self.dialect.backend_factory()
+        if factory is None:
+            self.Error.no_backends()
             return None
-        return self.backends[self.backendcombo.currentIndex()]
+        return factory
 
     def on_connection_success(self):
         super().on_connection_success()

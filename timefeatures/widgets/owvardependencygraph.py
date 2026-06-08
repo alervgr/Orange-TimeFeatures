@@ -25,6 +25,17 @@ from orangecontrib.network import Network
 # nombres encajen con los que aparecen escritos en las expresiones.
 _NAME_FIX_RE = re.compile(r'[ \-]')
 
+# Captura una llamada a función temporal (shift/sum/mean/count/min/max/sd),
+# extrae la variable referenciada como primer argumento y el resto de
+# argumentos numéricos. Aceptamos 1 o 2 enteros tras la coma para cubrir
+# shift(var, n) y las demás (var, n, m).
+_TIME_CALL_RE = re.compile(
+    r'\b(?:shift|sum|mean|count|min|max|sd)\(\s*'
+    r'(?P<var>[^,()\s]+)\s*'
+    r'(?P<args>(?:,\s*[-+]?\d+\s*){1,2})\)'
+)
+_INT_RE = re.compile(r'[-+]?\d+')
+
 
 def _sanitize_name(value):
     return _NAME_FIX_RE.sub('_', str(value))
@@ -48,8 +59,34 @@ def _expression_or_none(value):
     return text
 
 
+def _temporal_weights(expression):
+    """Por cada variable referenciada en una función temporal de
+    ``expression``, devuelve el máximo ``|arg|`` numérico entre TODAS las
+    llamadas que la mencionan. La idea: cuanto mayor el peso, mayor la
+    ventana temporal con la que esa variable interviene.
+
+    Returns
+    -------
+    dict[str, int]
+        variable → max(|arg|). Vacío si no hay llamadas temporales.
+    """
+    weights = {}
+    for match in _TIME_CALL_RE.finditer(expression):
+        var = match.group("var")
+        args = [int(a) for a in _INT_RE.findall(match.group("args"))]
+        if not args:
+            continue
+        max_abs = max(abs(a) for a in args)
+        weights[var] = max(weights.get(var, 0), max_abs)
+    return weights
+
+
 def build_dependency_network(config_table):
     """Construye un :class:`Network` a partir de una tabla de configuración.
+
+    Las aristas llevan peso = máximo ``|arg|`` de las llamadas temporales
+    en la expresión origen que referencian a la variable destino, o 1
+    cuando la referencia es puramente no-temporal.
 
     Parameters
     ----------
@@ -60,7 +97,8 @@ def build_dependency_network(config_table):
     -------
     Network
         Con ``network.nodes`` poblado: metas ``var_name`` (str) y
-        ``var_type`` (Derived / Original).
+        ``var_type`` (Derived / Original). El sparse matrix de aristas
+        tiene los pesos numéricos como valores.
     """
     # 1. Una sola pasada para extraer (nombre saneado, expresión opcional).
     rows = [
@@ -79,8 +117,8 @@ def build_dependency_network(config_table):
         if names else None
     )
 
-    # 2. Detectar dependencias.
-    row_edges, col_edges = [], []
+    # 2. Detectar dependencias y calcular pesos.
+    row_edges, col_edges, edge_weights = [], [], []
     var_type = []
     for src_idx, (_, expression) in enumerate(rows):
         if expression is None:
@@ -90,6 +128,10 @@ def build_dependency_network(config_table):
         var_type.append(0)
         if pattern is None:
             continue
+
+        # Pesos por variable según las funciones temporales.
+        temporal = _temporal_weights(expression)
+
         seen = set()
         for match in pattern.finditer(expression):
             dep = match.group(1)
@@ -99,10 +141,13 @@ def build_dependency_network(config_table):
             seen.add(dep)
             row_edges.append(src_idx)
             col_edges.append(dep_idx)
+            # Peso temporal si lo hay; si la referencia es no-temporal, 1.
+            edge_weights.append(temporal.get(dep, 1))
 
     n = len(names)
     edges = sp.csr_matrix(
-        (np.ones(len(row_edges)), (row_edges, col_edges)),
+        (np.asarray(edge_weights, dtype=float),
+         (row_edges, col_edges)),
         shape=(n, n),
     )
 

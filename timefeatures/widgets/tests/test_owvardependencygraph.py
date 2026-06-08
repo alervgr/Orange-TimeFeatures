@@ -9,6 +9,7 @@ from Orange.data import DiscreteVariable, Domain, Instance, Table
 from timefeatures.widgets.owvardependencygraph import (
     _expression_or_none,
     _sanitize_name,
+    _temporal_weights,
     build_dependency_network,
 )
 
@@ -75,6 +76,14 @@ class TestBuildDependencyNetwork(unittest.TestCase):
         """Devuelve un set de pares (src_idx, dst_idx)."""
         m = network.edges[0].edges.tocoo()
         return set(zip(m.row.tolist(), m.col.tolist()))
+
+    def _weighted_edges(self, network):
+        """Devuelve un dict {(src, dst): weight}."""
+        m = network.edges[0].edges.tocoo()
+        return {
+            (int(r), int(c)): float(w)
+            for r, c, w in zip(m.row, m.col, m.data)
+        }
 
     def test_simple_chain(self):
         # X1 → X2 → X3 (cada uno depende del siguiente).
@@ -147,6 +156,122 @@ class TestBuildDependencyNetwork(unittest.TestCase):
         ])
         net = build_dependency_network(table)
         self.assertEqual(self._edges(net), set())
+
+
+# --------------------------------------------------------------------- #
+#  _temporal_weights — peso máximo por variable en llamadas temporales
+# --------------------------------------------------------------------- #
+class TestTemporalWeights(unittest.TestCase):
+    def test_no_temporal_calls(self):
+        self.assertEqual(_temporal_weights("X + 1"), {})
+        self.assertEqual(_temporal_weights(""), {})
+
+    def test_shift_single(self):
+        self.assertEqual(_temporal_weights("shift(X,-20)"), {"X": 20})
+        self.assertEqual(_temporal_weights("shift(X,+5)"), {"X": 5})
+
+    def test_three_arg_call(self):
+        # max(|-5|, |10|) = 10
+        self.assertEqual(_temporal_weights("sum(X,-5,10)"), {"X": 10})
+        self.assertEqual(_temporal_weights("mean(X,-3,7)"), {"X": 7})
+
+    def test_multiple_calls_take_max(self):
+        # Dos llamadas sobre la misma variable: gana la de mayor |arg|.
+        expr = "shift(X,-3) + mean(X,-7,7)"
+        self.assertEqual(_temporal_weights(expr), {"X": 7})
+
+    def test_per_variable_independent(self):
+        expr = "shift(X,-5) + mean(Y,-10,10)"
+        self.assertEqual(_temporal_weights(expr), {"X": 5, "Y": 10})
+
+    def test_ignores_non_temporal_references(self):
+        # Y aparece sin envoltura temporal → no contribuye al peso.
+        self.assertEqual(
+            _temporal_weights("shift(X,-5) + Y"),
+            {"X": 5},
+        )
+
+
+# --------------------------------------------------------------------- #
+#  build_dependency_network — pesos en aristas
+# --------------------------------------------------------------------- #
+class TestEdgeWeights(unittest.TestCase):
+    def _weighted_edges(self, network):
+        m = network.edges[0].edges.tocoo()
+        return {
+            (int(r), int(c)): float(w)
+            for r, c, w in zip(m.row, m.col, m.data)
+        }
+
+    def test_shift_weight(self):
+        table = make_config([
+            ("X1", "shift(X2,-20)"),
+            ("X2", None),
+        ])
+        net = build_dependency_network(table)
+        self.assertEqual(self._weighted_edges(net), {(0, 1): 20.0})
+
+    def test_three_arg_weight_takes_max_abs(self):
+        table = make_config([
+            ("X1", "sum(X2,-5,10)"),
+            ("X2", None),
+        ])
+        net = build_dependency_network(table)
+        self.assertEqual(self._weighted_edges(net), {(0, 1): 10.0})
+
+    def test_non_temporal_reference_weight_is_one(self):
+        # Y aparece sin función temporal → peso = 1.
+        table = make_config([
+            ("X1", "X2 + 1"),
+            ("X2", None),
+        ])
+        net = build_dependency_network(table)
+        self.assertEqual(self._weighted_edges(net), {(0, 1): 1.0})
+
+    def test_mixed_temporal_and_plain(self):
+        # X2 aparece temporal (shift,-5) y no-temporal (+ X2): gana el 5.
+        table = make_config([
+            ("X1", "shift(X2,-5) + X2"),
+            ("X2", None),
+        ])
+        net = build_dependency_network(table)
+        self.assertEqual(self._weighted_edges(net), {(0, 1): 5.0})
+
+    def test_multiple_calls_take_max_across_window(self):
+        table = make_config([
+            ("X1", "shift(X2,-3) + mean(X2,-7,7)"),
+            ("X2", None),
+        ])
+        net = build_dependency_network(table)
+        # max(3, 7) = 7
+        self.assertEqual(self._weighted_edges(net), {(0, 1): 7.0})
+
+    def test_per_dependency_independent_weights(self):
+        # X1 := shift(X2,-3) + mean(X3,-10,10)
+        # Edge X1→X2 = 3, Edge X1→X3 = 10
+        table = make_config([
+            ("X1", "shift(X2,-3) + mean(X3,-10,10)"),
+            ("X2", None),
+            ("X3", None),
+        ])
+        net = build_dependency_network(table)
+        self.assertEqual(
+            self._weighted_edges(net),
+            {(0, 1): 3.0, (0, 2): 10.0},
+        )
+
+    def test_chain_of_weights(self):
+        # X1 depende temporalmente de X2 (5), X2 de X3 (-2..2 → 2).
+        table = make_config([
+            ("X1", "shift(X2,-5)"),
+            ("X2", "mean(X3,-2,2)"),
+            ("X3", None),
+        ])
+        net = build_dependency_network(table)
+        self.assertEqual(
+            self._weighted_edges(net),
+            {(0, 1): 5.0, (1, 2): 2.0},
+        )
 
 
 if __name__ == "__main__":

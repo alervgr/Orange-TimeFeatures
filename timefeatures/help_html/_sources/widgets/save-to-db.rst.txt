@@ -1,7 +1,17 @@
 Save to DB
 ==========
 
-The **Save to DB** widget saves an Orange data table into a SQL database. It relies on Orange's SQL backend layer to seamlessly upload your datasets for persistent storage and further querying.
+The **Save to DB** widget persists an Orange data table to a SQL
+database. It supports two dialects out of the box:
+
+- **PostgreSQL** — via Orange's built-in SQL backend layer
+  (``psycopg2``).
+- **MySQL** — via a lightweight ``pymysql`` wrapper shipped with
+  |addon|.
+
+The dialect is selected with the top combo box of the connection
+panel; the same host / port / database / user / password fields apply
+to both.
 
 Inputs
 ------
@@ -14,66 +24,126 @@ Inputs
      - Description
    * - Data
      - ``Orange.data.Table``
-     - The dataset you wish to upload to the database.
+     - The dataset to upload.
 
 Outputs
 -------
 
-This widget has no output signals. It acts as an endpoint in your data pipeline.
+This widget has no output signals — it is a pipeline sink.
 
 Controls
 --------
 
-The widget displays the detected class type, row count, and column count for the input table. Connection fields (such as Host, Port, Database, User, and Password) are inherited from Orange's SQL base widget.
+The widget shows the detected target type, row count and column count
+of the input. Connection fields (host, port, database, user, password)
+come from Orange's SQL base widget.
 
-The TimeFeatures-specific fields are:
+TimeFeatures-specific fields:
 
 .. list-table::
    :header-rows: 1
 
    * - Field
      - Description
+   * - Database type
+     - Combo box at the top of the connection box. Pick **PostgreSQL**
+       or **MySQL**.
    * - Table name
-     - The destination table name in the database. It must start with a letter or underscore and contain only letters, digits, and underscores, up to 63 characters.
+     - Destination table name. Validated against PostgreSQL identifier
+       rules (see *Validation* below); MySQL accepts a superset, so
+       the same rule is safe on both.
    * - Email
-     - An optional notification email address used to send an alert after a successful data upload.
+     - Optional notification address. A summary email is sent once the
+       upload finishes, including the table name, row / column counts,
+       and elapsed time.
 
-Clicking **Save** creates or updates a metadata table named ``datasets`` and then creates the destination table for the uploaded data.
+Clicking **Save** creates (if missing) a metadata table named
+``datasets`` and then the destination table, and finally inserts every
+row of the input.
 
-Database Behavior
------------------
+Type Mapping
+------------
 
-When uploading data, the widget automatically maps Orange variable types to appropriate SQL column types:
+Column types are picked per dialect so the table works on either
+backend without truncation surprises:
 
 .. list-table::
    :header-rows: 1
 
    * - Orange Variable
-     - SQL Type
+     - PostgreSQL
+     - MySQL
    * - ``DiscreteVariable``
-     - ``VARCHAR``
+     - ``VARCHAR(255)``
+     - ``VARCHAR(255)``
    * - ``ContinuousVariable``
-     - ``FLOAT(10)``
+     - ``DOUBLE PRECISION``
+     - ``DOUBLE``
    * - ``TimeVariable``
      - ``TIMESTAMP``
+     - ``DATETIME`` (MySQL's ``TIMESTAMP`` is capped at 2038).
    * - ``StringVariable``
-     - ``VARCHAR``
+     - ``TEXT``
+     - ``TEXT``
+
+Identifiers (table and column names) are quoted with the dialect's
+native syntax — ``"name"`` on PostgreSQL, ``\`name\``` on MySQL — and
+any internal occurrence of the quote character is doubled to avoid
+breakouts.
 
 Validation
 ----------
 
-Before attempting to save the data, the widget performs several validation checks:
+Before touching the database the widget enforces:
 
-- Verifies that a table name is provided.
-- Ensures the table name is SQL-safe (avoids SQL injection or syntax errors).
-- Checks that the required host and database connection fields are present.
-- Validates the optional email field to ensure it has a correct email format.
+- **Table name present** — required.
+- **Table name well-formed** — must match
+  ``^[A-Za-z_][A-Za-z0-9_]{0,62}$`` (PostgreSQL identifier rules:
+  starts with a letter or underscore, only letters / digits /
+  underscores, max 63 characters).
+- **Connection fields present** — host and database.
+- **Email well-formed** — only when the optional field is filled.
+
+Security
+--------
+
+The widget defends against SQL injection at two layers:
+
+- **Parametrised queries** — every value inserted into the database
+  uses parameter binding (``execute_sql_query(query, params=...)``).
+  Row contents and metadata values are never concatenated into the SQL
+  string.
+- **Identifier escaping** — table names and column names that appear
+  in DDL (``CREATE TABLE`` / ``INSERT INTO``) are wrapped with
+  PostgreSQL's standard quoted-identifier syntax (``"name"`` with any
+  internal ``"`` doubled). The whitelist regex above further blocks
+  payloads from ever reaching the escape step.
 
 Usage Example
 -------------
 
-1. Connect a **File** widget (or any widget outputting data) to the **Save to DB** widget.
-2. Enter your database connection details (Host, Database, Username, Password).
-3. Specify a valid **Table name** (e.g., ``my_time_series_data``).
-4. Optionally, provide an **Email** to receive a notification upon completion.
-5. Click **Save** to upload your dataset.
+1. Connect a **File** widget (or any data-producing widget) to **Save
+   to DB**.
+2. Fill in the database connection details (host, database, username,
+   password).
+3. Enter a valid table name, e.g. ``my_time_series_data``.
+4. *(Optional)* Enter an email for the completion notification.
+5. Click **Save**. The widget shows a progress bar while inserting and
+   reports any backend error.
+
+Requirements
+------------
+
+Both database drivers ship as part of |addon|'s install:
+
+.. code-block:: text
+
+   psycopg2-binary>=2.9.9   # PostgreSQL
+   PyMySQL>=1.0.0           # MySQL
+
+``psycopg2-binary`` is the binary distribution, so the widget runs on
+macOS, Linux and Windows without a C compiler or the ``libpq``
+development headers. ``PyMySQL`` is pure Python and has no native
+build step. For production deployments you may swap either driver for
+its source-distribution counterpart (``psycopg2`` or ``mysqlclient``)
+in your environment.

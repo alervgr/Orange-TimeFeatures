@@ -1,7 +1,10 @@
 Time Features Constructor
 =========================
 
-The **Time Features Constructor** constructs new numeric variables from the input data using Python-style expressions and time-window functions. It is an essential tool for time-series feature engineering, allowing you to easily compute rolling statistics, lagged variables, and custom mathematical transformations.
+The **Time Features Constructor** builds new numeric, datetime,
+categorical or text variables from existing ones via Python-style
+expressions and a family of time-window functions. It is the central
+widget for time-series feature engineering inside |addon|.
 
 Inputs
 ------
@@ -14,10 +17,11 @@ Inputs
      - Description
    * - Data
      - ``Orange.data.Table``
-     - Source table used to evaluate expressions.
+     - Source table whose columns can be referenced from expressions.
    * - Variable Definitions
      - ``Orange.data.Table``
-     - Optional configuration table containing predefined ``Variable`` and ``Expression`` columns.
+     - Optional configuration table (``Variable`` / ``Expression``) used
+       to *bulk-load* descriptors into the editor.
 
 Outputs
 -------
@@ -30,29 +34,32 @@ Outputs
      - Description
    * - Data
      - ``Orange.data.Table``
-     - The transformed input table, appended with the newly generated variables.
+     - The source table extended with the newly generated variables.
    * - Variable Definitions
      - ``Orange.data.Table``
-     - A configuration table describing both the original and generated variables. This can be passed to other widgets like the **Variable Dependency Graph**.
+     - A ``Variable`` / ``Expression`` table describing the full output
+       domain. Feed this to the **Variable Dependency Graph** widget.
 
-Description
------------
+Controls
+--------
 
-The widget interface consists of an editor where you can define new variables. 
+- **New** — adds a new variable definition to the editor.
+- **Remove** — deletes the selected definition.
+- **Reset** — clears every definition and rolls the widget state back to
+  the original input.
+- **Send** — re-evaluates every definition against the input data.
 
-- **New** creates a new numeric variable definition. 
-- **Remove** deletes the selected definition.
-- **Reset** clears the widget state back to default. 
-- **Send** evaluates the current definitions and sends the transformed data to the output.
-
-The editor contains a variable name field, a meta-variable toggle, an expression field, a selector for source variables, a selector for standard functions, and a selector for time functions.
+Each editor row exposes a name field, a meta-variable toggle, the
+expression field, a source-variable picker, a standard function picker
+and a time-function picker.
 
 Expressions
 -----------
 
-Expressions can reference variables from the original input domain. Variable names are sanitized to be valid Python identifiers: spaces and punctuation become underscores, and names that start with a digit receive a leading underscore.
-
-**Examples:**
+Expressions are evaluated as restricted Python. Variable references use
+the **sanitised** name — spaces and most punctuation are replaced with
+underscores, and identifiers that start with a digit receive a leading
+underscore.
 
 .. code-block:: python
 
@@ -60,46 +67,116 @@ Expressions can reference variables from the original input domain. Variable nam
    log(price)
    shift(age, -20)
    mean(temperature, -2, 2)
+   abs(velocity) + sqrt(altitude)
 
-Standard Python built-ins such as ``abs``, ``int``, ``float`` and ``pow`` are available. Additionally, public functions from Python's ``math`` module and selected random/nan helpers can be used directly in your expressions.
+The evaluation environment is locked down: ``__builtins__`` is replaced
+with an empty dict so dangerous calls like ``__import__`` or ``open``
+fail with ``NameError``. Only the names listed below are exposed.
 
-Time Functions
---------------
+Available names
+~~~~~~~~~~~~~~~
 
-The widget provides specialized time-window functions for sequential data.
+.. list-table::
+   :header-rows: 1
+   :widths: 25 75
+
+   * - Group
+     - Names
+   * - Safe builtins
+     - ``abs``, ``all``, ``any``, ``bin``, ``bool``, ``bytearray``,
+       ``bytes``, ``chr``, ``complex``, ``dict``, ``divmod``,
+       ``enumerate``, ``filter``, ``float``, ``format``, ``frozenset``,
+       ``getattr``, ``hasattr``, ``hash``, ``hex``, ``id``, ``int``,
+       ``iter``, ``len``, ``list``, ``map``, ``max``, ``memoryview``,
+       ``min``, ``next``, ``object``, ``oct``, ``ord``, ``pow``,
+       ``range``, ``repr``, ``reversed``, ``round``, ``set``, ``slice``,
+       ``sorted``, ``str``, ``sum``, ``tuple``, ``type``, ``zip``,
+       ``True``, ``False``, ``None``, ``Ellipsis``.
+   * - ``math`` module
+     - Every public attribute (``sqrt``, ``log``, ``sin``, ``pi``, ``e``,
+       ``floor``, ``hypot``, ``atan2``, …).
+   * - Random helpers
+     - ``normalvariate``, ``gauss``, ``expovariate``, ``gammavariate``,
+       ``betavariate``, ``lognormvariate``, ``paretovariate``,
+       ``vonmisesvariate``, ``weibullvariate``, ``triangular``,
+       ``uniform``.
+   * - Aggregators
+     - ``mean``, ``std``, ``median``, ``var``, ``cumsum``, ``cumprod``,
+       ``argmax``, ``argmin`` and their NaN-aware variants
+       (``nanmean``, ``nanstd``, …). All take ``*args`` and delegate to
+       NumPy.
+
+Time-window functions
+---------------------
+
+These functions operate on the *whole* column rather than the current
+row's value, so they need the entire input to be in memory. Out-of-range
+indices produce missing values; ``NaN`` entries inside the window are
+ignored.
 
 .. list-table::
    :header-rows: 1
 
    * - Function
-     - Description
+     - Semantics
    * - ``shift(var, offset)``
-     - Value of ``var`` at the row shifted by ``offset``. Out-of-range rows become missing values.
+     - Value of ``var`` at the current row plus ``offset``. Returns
+       missing when the shifted index falls outside the table.
    * - ``sum(var, start, end)``
-     - Sum of non-missing values in the inclusive offset window.
+     - Sum over the inclusive window ``[row+start, row+end]``,
+       skipping ``NaN``.
    * - ``mean(var, start, end)``
-     - Mean of non-missing values in the inclusive offset window.
+     - Arithmetic mean over the window.
    * - ``count(var, start, end)``
-     - Number of non-missing values in the inclusive offset window.
-   * - ``min(var, start, end)``
-     - Minimum non-missing value in the inclusive offset window.
-   * - ``max(var, start, end)``
-     - Maximum non-missing value in the inclusive offset window.
+     - Number of non-missing values inside the window.
+   * - ``min(var, start, end)`` / ``max(var, start, end)``
+     - Extreme of the non-missing window values.
    * - ``sd(var, start, end)``
-     - Standard deviation in the inclusive offset window.
+     - Population standard deviation (delegates to ``numpy.std`` with
+       ``ddof=0``).
+
+Window semantics across chunks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Orange chunks tables into 5 000-row blocks when computing derived
+columns. The widget caches the **full** column result on first use and
+returns the appropriate slice for each chunk, so a call like
+``shift(x, -20)`` keeps the right value across chunk boundaries even on
+multi-million-row tables.
+
+Workflow persistence
+--------------------
+
+The editor list ("Variables to generate") is the single source of truth.
+It is stored as ``Setting(..., schema_only=True)``, mirroring the
+upstream Orange Feature Constructor convention introduced in v4. This
+means:
+
+- Definitions survive workflow save and reload, even before clicking
+  **Send**.
+- Each **Send** re-transforms the **original** input, not the previous
+  output, so descriptors are not consumed and there is no cumulative
+  state to clean up.
+- The **Reset** button is the only path that empties the editor.
 
 Usage Example
 -------------
 
-If you have a dataset with a ``temperature`` variable recorded daily, you can create a 3-day rolling average feature by adding a new variable with the expression:
+A 3-day rolling average for daily ``temperature`` readings:
 
 .. code-block:: python
 
    mean(temperature, -2, 0)
 
-This will compute the mean of the temperature for the current day and the two preceding days.
+This computes the mean of the current day plus the two preceding days.
+A 5-day forward standard deviation:
 
-Notes
------
+.. code-block:: python
 
-The widget re-evaluates definitions from the original input table on every change. This prevents repeated sends from accumulating previously generated variables as new source columns, ensuring a clean and reproducible transformation pipeline.
+   sd(temperature, 1, 5)
+
+Combined features work too:
+
+.. code-block:: python
+
+   (max(price, -7, 0) - min(price, -7, 0)) / mean(price, -7, 0)

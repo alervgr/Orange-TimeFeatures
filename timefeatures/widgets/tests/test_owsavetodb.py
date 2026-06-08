@@ -5,8 +5,13 @@ de email no se testean aquí (requieren entorno con servidor).
 """
 import unittest
 
+import Orange
+
 from timefeatures.widgets.owsavetodb import (
     TABLE_NAME_REGEX,
+    _DIALECTS,
+    _MySQLDialect,
+    _PostgresDialect,
     quote_ident,
 )
 
@@ -77,6 +82,101 @@ class TestQuoteIdent(unittest.TestCase):
         body = quoted[1:-1]
         # cada `"` original aparece como `""` en el cuerpo
         self.assertEqual(body.count('"'), 2 * raw.count('"'))
+
+
+# --------------------------------------------------------------------- #
+#  Dialect abstraction
+# --------------------------------------------------------------------- #
+class TestPostgresDialect(unittest.TestCase):
+    def setUp(self):
+        self.dialect = _PostgresDialect()
+
+    def test_quote_ident_matches_module_helper(self):
+        # The legacy `quote_ident` is PostgreSQL-style; the dialect must
+        # produce the same output for the same input.
+        for name in ("col", 'a"b', "table 1", "foo;bar"):
+            self.assertEqual(self.dialect.quote_ident(name), quote_ident(name))
+
+    def test_column_types(self):
+        self.assertEqual(
+            self.dialect.column_type(Orange.data.DiscreteVariable("d")),
+            "VARCHAR(255)",
+        )
+        self.assertEqual(
+            self.dialect.column_type(Orange.data.ContinuousVariable("c")),
+            "DOUBLE PRECISION",
+        )
+        self.assertEqual(
+            self.dialect.column_type(Orange.data.TimeVariable("t")),
+            "TIMESTAMP",
+        )
+        self.assertEqual(
+            self.dialect.column_type(Orange.data.StringVariable("s")),
+            "TEXT",
+        )
+
+
+class TestMySQLDialect(unittest.TestCase):
+    def setUp(self):
+        self.dialect = _MySQLDialect()
+
+    def test_quote_ident_uses_backticks(self):
+        self.assertEqual(self.dialect.quote_ident("col"), "`col`")
+
+    def test_quote_ident_escapes_internal_backtick(self):
+        # MySQL doubles an internal backtick to escape it.
+        self.assertEqual(self.dialect.quote_ident("a`b"), "`a``b`")
+
+    def test_quote_ident_keeps_double_quotes_literal(self):
+        # MySQL treats `"` as a string delimiter (depending on sql_mode),
+        # but inside a backtick-quoted identifier it's just data. The
+        # dialect should not transform it.
+        self.assertEqual(self.dialect.quote_ident('a"b'), '`a"b`')
+
+    def test_column_types(self):
+        self.assertEqual(
+            self.dialect.column_type(Orange.data.DiscreteVariable("d")),
+            "VARCHAR(255)",
+        )
+        # DOUBLE (not FLOAT(10)) — MySQL's FLOAT(M,D) syntax means
+        # precision/scale, which is not what we want.
+        self.assertEqual(
+            self.dialect.column_type(Orange.data.ContinuousVariable("c")),
+            "DOUBLE",
+        )
+        # DATETIME (not TIMESTAMP) — MySQL's TIMESTAMP is limited to
+        # 1970-2038.
+        self.assertEqual(
+            self.dialect.column_type(Orange.data.TimeVariable("t")),
+            "DATETIME",
+        )
+        self.assertEqual(
+            self.dialect.column_type(Orange.data.StringVariable("s")),
+            "TEXT",
+        )
+
+    def test_unknown_variable_falls_back_to_text(self):
+        class _Mystery:
+            name = "x"
+        self.assertEqual(self.dialect.column_type(_Mystery()), "TEXT")
+
+
+class TestDialectsRegistry(unittest.TestCase):
+    def test_default_registry_has_both(self):
+        self.assertIn("PostgreSQL", _DIALECTS)
+        self.assertIn("MySQL", _DIALECTS)
+
+    def test_postgres_backend_factory_returns_orange_backend_or_none(self):
+        # On a clean install Orange's PostgreSQL backend is present, but if
+        # not we expect None instead of an exception.
+        factory = _DIALECTS["PostgreSQL"].backend_factory()
+        if factory is not None:
+            self.assertEqual(factory.display_name, "PostgreSQL")
+
+    def test_mysql_backend_factory_returns_our_wrapper(self):
+        from timefeatures.widgets.owsavetodb import _MySQLBackend
+        factory = _DIALECTS["MySQL"].backend_factory()
+        self.assertIs(factory, _MySQLBackend)
 
 
 if __name__ == "__main__":

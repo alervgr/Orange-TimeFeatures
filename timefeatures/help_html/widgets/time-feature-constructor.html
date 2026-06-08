@@ -8,14 +8,14 @@
     <title>Time Features Constructor &#8212; TimeFeatures documentation</title>
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=5ecbeea2" />
     <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=686e5160" />
-    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=27fed22d" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=f6a572b4" />
     <script src="../_static/documentation_options.js?v=14ed45bf"></script>
     <script src="../_static/doctools.js?v=9bcbadda"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Variable Dependency Graph" href="variable-dependency-graph.html" />
-    <link rel="prev" title="TimeFeatures" href="../index.html" />
+    <link rel="prev" title="Installation" href="../installation.html" />
    
   <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
   
@@ -24,9 +24,69 @@
   
 
   </head><body>
-  
+  <div class="document">
+    
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">TimeFeatures</a></h1>
 
-    <div class="document">
+
+
+<p class="blurb">Time-series feature engineering for Orange3: build derived variables, visualise their dependencies, and persist data to PostgreSQL.</p>
+
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=alervgr&repo=Orange-TimeFeatures&type=watch&count=true&size=large&v=2"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+</ul>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Time Features Constructor</a></li>
+<li class="toctree-l1"><a class="reference internal" href="variable-dependency-graph.html">Variable Dependency Graph</a></li>
+<li class="toctree-l1"><a class="reference internal" href="save-to-db.html">Save to DB</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../changes.html">Changelog</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="../installation.html" title="previous chapter">Installation</a></li>
+      <li>Next: <a href="variable-dependency-graph.html" title="next chapter">Variable Dependency Graph</a></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
       <div class="documentwrapper">
         <div class="bodywrapper">
           
@@ -35,7 +95,10 @@
             
   <section id="time-features-constructor">
 <h1>Time Features Constructor<a class="headerlink" href="#time-features-constructor" title="Link to this heading">¶</a></h1>
-<p>The <strong>Time Features Constructor</strong> constructs new numeric variables from the input data using Python-style expressions and time-window functions. It is an essential tool for time-series feature engineering, allowing you to easily compute rolling statistics, lagged variables, and custom mathematical transformations.</p>
+<p>The <strong>Time Features Constructor</strong> builds new numeric, datetime,
+categorical or text variables from existing ones via Python-style
+expressions and a family of time-window functions. It is the central
+widget for time-series feature engineering inside TimeFeatures.</p>
 <section id="inputs">
 <h2>Inputs<a class="headerlink" href="#inputs" title="Link to this heading">¶</a></h2>
 <table class="docutils align-default">
@@ -48,11 +111,12 @@
 <tbody>
 <tr class="row-even"><td><p>Data</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">Orange.data.Table</span></code></p></td>
-<td><p>Source table used to evaluate expressions.</p></td>
+<td><p>Source table whose columns can be referenced from expressions.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Variable Definitions</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">Orange.data.Table</span></code></p></td>
-<td><p>Optional configuration table containing predefined <code class="docutils literal notranslate"><span class="pre">Variable</span></code> and <code class="docutils literal notranslate"><span class="pre">Expression</span></code> columns.</p></td>
+<td><p>Optional configuration table (<code class="docutils literal notranslate"><span class="pre">Variable</span></code> / <code class="docutils literal notranslate"><span class="pre">Expression</span></code>) used
+to <em>bulk-load</em> descriptors into the editor.</p></td>
 </tr>
 </tbody>
 </table>
@@ -69,83 +133,164 @@
 <tbody>
 <tr class="row-even"><td><p>Data</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">Orange.data.Table</span></code></p></td>
-<td><p>The transformed input table, appended with the newly generated variables.</p></td>
+<td><p>The source table extended with the newly generated variables.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Variable Definitions</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">Orange.data.Table</span></code></p></td>
-<td><p>A configuration table describing both the original and generated variables. This can be passed to other widgets like the <strong>Variable Dependency Graph</strong>.</p></td>
+<td><p>A <code class="docutils literal notranslate"><span class="pre">Variable</span></code> / <code class="docutils literal notranslate"><span class="pre">Expression</span></code> table describing the full output
+domain. Feed this to the <strong>Variable Dependency Graph</strong> widget.</p></td>
 </tr>
 </tbody>
 </table>
 </section>
-<section id="description">
-<h2>Description<a class="headerlink" href="#description" title="Link to this heading">¶</a></h2>
-<p>The widget interface consists of an editor where you can define new variables.</p>
+<section id="controls">
+<h2>Controls<a class="headerlink" href="#controls" title="Link to this heading">¶</a></h2>
 <ul class="simple">
-<li><p><strong>New</strong> creates a new numeric variable definition.</p></li>
-<li><p><strong>Remove</strong> deletes the selected definition.</p></li>
-<li><p><strong>Reset</strong> clears the widget state back to default.</p></li>
-<li><p><strong>Send</strong> evaluates the current definitions and sends the transformed data to the output.</p></li>
+<li><p><strong>New</strong> — adds a new variable definition to the editor.</p></li>
+<li><p><strong>Remove</strong> — deletes the selected definition.</p></li>
+<li><p><strong>Reset</strong> — clears every definition and rolls the widget state back to
+the original input.</p></li>
+<li><p><strong>Send</strong> — re-evaluates every definition against the input data.</p></li>
 </ul>
-<p>The editor contains a variable name field, a meta-variable toggle, an expression field, a selector for source variables, a selector for standard functions, and a selector for time functions.</p>
+<p>Each editor row exposes a name field, a meta-variable toggle, the
+expression field, a source-variable picker, a standard function picker
+and a time-function picker.</p>
 </section>
 <section id="expressions">
 <h2>Expressions<a class="headerlink" href="#expressions" title="Link to this heading">¶</a></h2>
-<p>Expressions can reference variables from the original input domain. Variable names are sanitized to be valid Python identifiers: spaces and punctuation become underscores, and names that start with a digit receive a leading underscore.</p>
-<p><strong>Examples:</strong></p>
+<p>Expressions are evaluated as restricted Python. Variable references use
+the <strong>sanitised</strong> name — spaces and most punctuation are replaced with
+underscores, and identifiers that start with a digit receive a leading
+underscore.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">age</span> <span class="o">+</span> <span class="mi">1</span>
 <span class="n">log</span><span class="p">(</span><span class="n">price</span><span class="p">)</span>
 <span class="n">shift</span><span class="p">(</span><span class="n">age</span><span class="p">,</span> <span class="o">-</span><span class="mi">20</span><span class="p">)</span>
 <span class="n">mean</span><span class="p">(</span><span class="n">temperature</span><span class="p">,</span> <span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+<span class="nb">abs</span><span class="p">(</span><span class="n">velocity</span><span class="p">)</span> <span class="o">+</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">altitude</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>Standard Python built-ins such as <code class="docutils literal notranslate"><span class="pre">abs</span></code>, <code class="docutils literal notranslate"><span class="pre">int</span></code>, <code class="docutils literal notranslate"><span class="pre">float</span></code> and <code class="docutils literal notranslate"><span class="pre">pow</span></code> are available. Additionally, public functions from Python’s <code class="docutils literal notranslate"><span class="pre">math</span></code> module and selected random/nan helpers can be used directly in your expressions.</p>
-</section>
-<section id="time-functions">
-<h2>Time Functions<a class="headerlink" href="#time-functions" title="Link to this heading">¶</a></h2>
-<p>The widget provides specialized time-window functions for sequential data.</p>
+<p>The evaluation environment is locked down: <code class="docutils literal notranslate"><span class="pre">__builtins__</span></code> is replaced
+with an empty dict so dangerous calls like <code class="docutils literal notranslate"><span class="pre">__import__</span></code> or <code class="docutils literal notranslate"><span class="pre">open</span></code>
+fail with <code class="docutils literal notranslate"><span class="pre">NameError</span></code>. Only the names listed below are exposed.</p>
+<section id="available-names">
+<h3>Available names<a class="headerlink" href="#available-names" title="Link to this heading">¶</a></h3>
 <table class="docutils align-default">
+<colgroup>
+<col style="width: 25.0%" />
+<col style="width: 75.0%" />
+</colgroup>
 <thead>
-<tr class="row-odd"><th class="head"><p>Function</p></th>
-<th class="head"><p>Description</p></th>
+<tr class="row-odd"><th class="head"><p>Group</p></th>
+<th class="head"><p>Names</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">shift(var,</span> <span class="pre">offset)</span></code></p></td>
-<td><p>Value of <code class="docutils literal notranslate"><span class="pre">var</span></code> at the row shifted by <code class="docutils literal notranslate"><span class="pre">offset</span></code>. Out-of-range rows become missing values.</p></td>
+<tr class="row-even"><td><p>Safe builtins</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">abs</span></code>, <code class="docutils literal notranslate"><span class="pre">all</span></code>, <code class="docutils literal notranslate"><span class="pre">any</span></code>, <code class="docutils literal notranslate"><span class="pre">bin</span></code>, <code class="docutils literal notranslate"><span class="pre">bool</span></code>, <code class="docutils literal notranslate"><span class="pre">bytearray</span></code>,
+<code class="docutils literal notranslate"><span class="pre">bytes</span></code>, <code class="docutils literal notranslate"><span class="pre">chr</span></code>, <code class="docutils literal notranslate"><span class="pre">complex</span></code>, <code class="docutils literal notranslate"><span class="pre">dict</span></code>, <code class="docutils literal notranslate"><span class="pre">divmod</span></code>,
+<code class="docutils literal notranslate"><span class="pre">enumerate</span></code>, <code class="docutils literal notranslate"><span class="pre">filter</span></code>, <code class="docutils literal notranslate"><span class="pre">float</span></code>, <code class="docutils literal notranslate"><span class="pre">format</span></code>, <code class="docutils literal notranslate"><span class="pre">frozenset</span></code>,
+<code class="docutils literal notranslate"><span class="pre">getattr</span></code>, <code class="docutils literal notranslate"><span class="pre">hasattr</span></code>, <code class="docutils literal notranslate"><span class="pre">hash</span></code>, <code class="docutils literal notranslate"><span class="pre">hex</span></code>, <code class="docutils literal notranslate"><span class="pre">id</span></code>, <code class="docutils literal notranslate"><span class="pre">int</span></code>,
+<code class="docutils literal notranslate"><span class="pre">iter</span></code>, <code class="docutils literal notranslate"><span class="pre">len</span></code>, <code class="docutils literal notranslate"><span class="pre">list</span></code>, <code class="docutils literal notranslate"><span class="pre">map</span></code>, <code class="docutils literal notranslate"><span class="pre">max</span></code>, <code class="docutils literal notranslate"><span class="pre">memoryview</span></code>,
+<code class="docutils literal notranslate"><span class="pre">min</span></code>, <code class="docutils literal notranslate"><span class="pre">next</span></code>, <code class="docutils literal notranslate"><span class="pre">object</span></code>, <code class="docutils literal notranslate"><span class="pre">oct</span></code>, <code class="docutils literal notranslate"><span class="pre">ord</span></code>, <code class="docutils literal notranslate"><span class="pre">pow</span></code>,
+<code class="docutils literal notranslate"><span class="pre">range</span></code>, <code class="docutils literal notranslate"><span class="pre">repr</span></code>, <code class="docutils literal notranslate"><span class="pre">reversed</span></code>, <code class="docutils literal notranslate"><span class="pre">round</span></code>, <code class="docutils literal notranslate"><span class="pre">set</span></code>, <code class="docutils literal notranslate"><span class="pre">slice</span></code>,
+<code class="docutils literal notranslate"><span class="pre">sorted</span></code>, <code class="docutils literal notranslate"><span class="pre">str</span></code>, <code class="docutils literal notranslate"><span class="pre">sum</span></code>, <code class="docutils literal notranslate"><span class="pre">tuple</span></code>, <code class="docutils literal notranslate"><span class="pre">type</span></code>, <code class="docutils literal notranslate"><span class="pre">zip</span></code>,
+<code class="docutils literal notranslate"><span class="pre">True</span></code>, <code class="docutils literal notranslate"><span class="pre">False</span></code>, <code class="docutils literal notranslate"><span class="pre">None</span></code>, <code class="docutils literal notranslate"><span class="pre">Ellipsis</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sum(var,</span> <span class="pre">start,</span> <span class="pre">end)</span></code></p></td>
-<td><p>Sum of non-missing values in the inclusive offset window.</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">math</span></code> module</p></td>
+<td><p>Every public attribute (<code class="docutils literal notranslate"><span class="pre">sqrt</span></code>, <code class="docutils literal notranslate"><span class="pre">log</span></code>, <code class="docutils literal notranslate"><span class="pre">sin</span></code>, <code class="docutils literal notranslate"><span class="pre">pi</span></code>, <code class="docutils literal notranslate"><span class="pre">e</span></code>,
+<code class="docutils literal notranslate"><span class="pre">floor</span></code>, <code class="docutils literal notranslate"><span class="pre">hypot</span></code>, <code class="docutils literal notranslate"><span class="pre">atan2</span></code>, …).</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">mean(var,</span> <span class="pre">start,</span> <span class="pre">end)</span></code></p></td>
-<td><p>Mean of non-missing values in the inclusive offset window.</p></td>
+<tr class="row-even"><td><p>Random helpers</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">normalvariate</span></code>, <code class="docutils literal notranslate"><span class="pre">gauss</span></code>, <code class="docutils literal notranslate"><span class="pre">expovariate</span></code>, <code class="docutils literal notranslate"><span class="pre">gammavariate</span></code>,
+<code class="docutils literal notranslate"><span class="pre">betavariate</span></code>, <code class="docutils literal notranslate"><span class="pre">lognormvariate</span></code>, <code class="docutils literal notranslate"><span class="pre">paretovariate</span></code>,
+<code class="docutils literal notranslate"><span class="pre">vonmisesvariate</span></code>, <code class="docutils literal notranslate"><span class="pre">weibullvariate</span></code>, <code class="docutils literal notranslate"><span class="pre">triangular</span></code>,
+<code class="docutils literal notranslate"><span class="pre">uniform</span></code>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">count(var,</span> <span class="pre">start,</span> <span class="pre">end)</span></code></p></td>
-<td><p>Number of non-missing values in the inclusive offset window.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">min(var,</span> <span class="pre">start,</span> <span class="pre">end)</span></code></p></td>
-<td><p>Minimum non-missing value in the inclusive offset window.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max(var,</span> <span class="pre">start,</span> <span class="pre">end)</span></code></p></td>
-<td><p>Maximum non-missing value in the inclusive offset window.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sd(var,</span> <span class="pre">start,</span> <span class="pre">end)</span></code></p></td>
-<td><p>Standard deviation in the inclusive offset window.</p></td>
+<tr class="row-odd"><td><p>Aggregators</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">mean</span></code>, <code class="docutils literal notranslate"><span class="pre">std</span></code>, <code class="docutils literal notranslate"><span class="pre">median</span></code>, <code class="docutils literal notranslate"><span class="pre">var</span></code>, <code class="docutils literal notranslate"><span class="pre">cumsum</span></code>, <code class="docutils literal notranslate"><span class="pre">cumprod</span></code>,
+<code class="docutils literal notranslate"><span class="pre">argmax</span></code>, <code class="docutils literal notranslate"><span class="pre">argmin</span></code> and their NaN-aware variants
+(<code class="docutils literal notranslate"><span class="pre">nanmean</span></code>, <code class="docutils literal notranslate"><span class="pre">nanstd</span></code>, …). All take <code class="docutils literal notranslate"><span class="pre">*args</span></code> and delegate to
+NumPy.</p></td>
 </tr>
 </tbody>
 </table>
 </section>
+</section>
+<section id="time-window-functions">
+<h2>Time-window functions<a class="headerlink" href="#time-window-functions" title="Link to this heading">¶</a></h2>
+<p>These functions operate on the <em>whole</em> column rather than the current
+row’s value, so they need the entire input to be in memory. Out-of-range
+indices produce missing values; <code class="docutils literal notranslate"><span class="pre">NaN</span></code> entries inside the window are
+ignored.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Function</p></th>
+<th class="head"><p>Semantics</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">shift(var,</span> <span class="pre">offset)</span></code></p></td>
+<td><p>Value of <code class="docutils literal notranslate"><span class="pre">var</span></code> at the current row plus <code class="docutils literal notranslate"><span class="pre">offset</span></code>. Returns
+missing when the shifted index falls outside the table.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sum(var,</span> <span class="pre">start,</span> <span class="pre">end)</span></code></p></td>
+<td><p>Sum over the inclusive window <code class="docutils literal notranslate"><span class="pre">[row+start,</span> <span class="pre">row+end]</span></code>,
+skipping <code class="docutils literal notranslate"><span class="pre">NaN</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">mean(var,</span> <span class="pre">start,</span> <span class="pre">end)</span></code></p></td>
+<td><p>Arithmetic mean over the window.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">count(var,</span> <span class="pre">start,</span> <span class="pre">end)</span></code></p></td>
+<td><p>Number of non-missing values inside the window.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">min(var,</span> <span class="pre">start,</span> <span class="pre">end)</span></code> / <code class="docutils literal notranslate"><span class="pre">max(var,</span> <span class="pre">start,</span> <span class="pre">end)</span></code></p></td>
+<td><p>Extreme of the non-missing window values.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sd(var,</span> <span class="pre">start,</span> <span class="pre">end)</span></code></p></td>
+<td><p>Population standard deviation (delegates to <code class="docutils literal notranslate"><span class="pre">numpy.std</span></code> with
+<code class="docutils literal notranslate"><span class="pre">ddof=0</span></code>).</p></td>
+</tr>
+</tbody>
+</table>
+<section id="window-semantics-across-chunks">
+<h3>Window semantics across chunks<a class="headerlink" href="#window-semantics-across-chunks" title="Link to this heading">¶</a></h3>
+<p>Orange chunks tables into 5 000-row blocks when computing derived
+columns. The widget caches the <strong>full</strong> column result on first use and
+returns the appropriate slice for each chunk, so a call like
+<code class="docutils literal notranslate"><span class="pre">shift(x,</span> <span class="pre">-20)</span></code> keeps the right value across chunk boundaries even on
+multi-million-row tables.</p>
+</section>
+</section>
+<section id="workflow-persistence">
+<h2>Workflow persistence<a class="headerlink" href="#workflow-persistence" title="Link to this heading">¶</a></h2>
+<p>The editor list (“Variables to generate”) is the single source of truth.
+It is stored as <code class="docutils literal notranslate"><span class="pre">Setting(...,</span> <span class="pre">schema_only=True)</span></code>, mirroring the
+upstream Orange Feature Constructor convention introduced in v4. This
+means:</p>
+<ul class="simple">
+<li><p>Definitions survive workflow save and reload, even before clicking
+<strong>Send</strong>.</p></li>
+<li><p>Each <strong>Send</strong> re-transforms the <strong>original</strong> input, not the previous
+output, so descriptors are not consumed and there is no cumulative
+state to clean up.</p></li>
+<li><p>The <strong>Reset</strong> button is the only path that empties the editor.</p></li>
+</ul>
+</section>
 <section id="usage-example">
 <h2>Usage Example<a class="headerlink" href="#usage-example" title="Link to this heading">¶</a></h2>
-<p>If you have a dataset with a <code class="docutils literal notranslate"><span class="pre">temperature</span></code> variable recorded daily, you can create a 3-day rolling average feature by adding a new variable with the expression:</p>
+<p>A 3-day rolling average for daily <code class="docutils literal notranslate"><span class="pre">temperature</span></code> readings:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">mean</span><span class="p">(</span><span class="n">temperature</span><span class="p">,</span> <span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>This will compute the mean of the temperature for the current day and the two preceding days.</p>
-</section>
-<section id="notes">
-<h2>Notes<a class="headerlink" href="#notes" title="Link to this heading">¶</a></h2>
-<p>The widget re-evaluates definitions from the original input table on every change. This prevents repeated sends from accumulating previously generated variables as new source columns, ensuring a clean and reproducible transformation pipeline.</p>
+<p>This computes the mean of the current day plus the two preceding days.
+A 5-day forward standard deviation:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">sd</span><span class="p">(</span><span class="n">temperature</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Combined features work too:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">price</span><span class="p">,</span> <span class="o">-</span><span class="mi">7</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">-</span> <span class="nb">min</span><span class="p">(</span><span class="n">price</span><span class="p">,</span> <span class="o">-</span><span class="mi">7</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span> <span class="o">/</span> <span class="n">mean</span><span class="p">(</span><span class="n">price</span><span class="p">,</span> <span class="o">-</span><span class="mi">7</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+</pre></div>
+</div>
 </section>
 </section>
 
@@ -154,66 +299,20 @@
           
         </div>
       </div>
-      <div class="sphinxsidebar" role="navigation" aria-label="Main">
-        <div class="sphinxsidebarwrapper">
-<h1 class="logo"><a href="../index.html">TimeFeatures</a></h1>
-
-
-
-
-
-
-
-
-
-<search id="searchbox" style="display: none" role="search">
-    <div class="searchformwrapper">
-    <form class="search" action="../search.html" method="get">
-      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
-      <input type="submit" value="Go" />
-    </form>
-    </div>
-</search>
-<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
-<ul class="current">
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Time Features Constructor</a></li>
-<li class="toctree-l1"><a class="reference internal" href="variable-dependency-graph.html">Variable Dependency Graph</a></li>
-<li class="toctree-l1"><a class="reference internal" href="save-to-db.html">Save to DB</a></li>
-</ul>
-
-<div class="relations">
-<h3>Related Topics</h3>
-<ul>
-  <li><a href="../index.html">Documentation overview</a><ul>
-      <li>Previous: <a href="../index.html" title="previous chapter">TimeFeatures</a></li>
-      <li>Next: <a href="variable-dependency-graph.html" title="next chapter">Variable Dependency Graph</a></li>
-  </ul></li>
-</ul>
-</div>
-
-
-
-
-
-
-
-
-        </div>
-      </div>
-      <div class="clearer"></div>
-    </div>
+    <div class="clearer"></div>
+  </div>
     <div class="footer">
       &#169;2026, Alejandro Rivas Garcia.
-      
-      |
-      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.1.3</a>
-      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
       
       |
       <a href="../_sources/widgets/time-feature-constructor.rst.txt"
           rel="nofollow">Page source</a>
     </div>
 
+    
+    <a href="https://github.com/alervgr/Orange-TimeFeatures" class="github">
+        <img src="../_static/github-banner.svg" alt="Fork me on GitHub" class="github"/>
+    </a>
     
 
     

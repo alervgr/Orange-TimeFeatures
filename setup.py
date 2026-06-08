@@ -32,6 +32,7 @@ setup(name="TimeFeatures",
           "PyQtWebEngine>=5.15.6",
           "scipy>=1.7.3",
           "psycopg2-binary>=2.9.9",
+          "PyMySQL>=1.0.0",
           "Orange3-Network>=1.8.0",
       ],
       extras_require={

@@ -1,20 +1,57 @@
 TimeFeatures
 ============
 
-|addon| is an Orange add-on for constructing time-based features,
-generating dependency graphs between variables, and saving datasets to a
-database.
+|addon| is an `Orange3 <https://orangedatamining.com/>`_ add-on for
+time-series feature engineering. It ships three widgets that work
+together to define, visualise and persist derived variables built on
+top of an existing dataset.
 
-Build the documentation locally with:
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
 
-.. code-block:: bash
+   * - Widget
+     - What it does
+   * - :doc:`widgets/time-feature-constructor`
+     - Defines new variables from existing ones using Python-style
+       expressions and time-window functions (``shift``, ``sum``,
+       ``mean``, ``min``, ``max``, ``sd``, ``count``).
+   * - :doc:`widgets/variable-dependency-graph`
+     - Builds a directed, **weighted** dependency graph from the
+       resulting variable / expression table. Edge weights summarise
+       how far back or forward in time each variable looks.
+   * - :doc:`widgets/save-to-db`
+     - Persists the resulting dataset to a SQL database (PostgreSQL),
+       with full SQL-injection defences and an optional completion
+       email.
 
-   python -m pip install -e ".[docs]"
-   python -m sphinx -b html docs docs/build/html
+.. _workflow:
 
-The add-on also ships a local HTML build for Orange's internal Help panel.
-The widget help action resolves these local pages through the
-``orange.canvas.help`` entry point; it does not need an internet URL.
+Workflow
+--------
+
+A typical pipeline:
+
+.. code-block:: text
+
+   File → Time Features Constructor → ┬→ <downstream models>
+                                      └→ Variable Dependency Graph
+                                              ↓
+                                      Network Explorer
+
+The **Time Features Constructor** outputs both the transformed data
+(top arrow) and the variable / expression definition table (bottom
+arrow). Feed the latter into the **Variable Dependency Graph** to
+visualise the dependencies, and send the data into **Save to DB** if
+you want to keep it in a database.
+
+Getting started
+---------------
+
+.. toctree::
+   :maxdepth: 2
+
+   installation
 
 .. _widgets:
 
@@ -28,10 +65,28 @@ Widgets
    widgets/variable-dependency-graph
    widgets/save-to-db
 
-Workflow
---------
+Project
+-------
 
-A typical workflow uses **Time Features Constructor** to add derived
-variables, sends the generated variable-definition table to **Variable
-Dependency Graph**, and optionally sends the transformed data to **Save to
-DB**.
+.. toctree::
+   :maxdepth: 1
+
+   changes
+
+Building this documentation
+---------------------------
+
+.. code-block:: bash
+
+   pip install -e ".[docs]"
+   python -m sphinx -b html docs docs/build/html
+
+The HTML build is also bundled with the wheel so Orange's in-app help
+panel can resolve every widget's *Help* action without internet
+access.
+
+Indices
+-------
+
+* :ref:`genindex`
+* :ref:`search`
