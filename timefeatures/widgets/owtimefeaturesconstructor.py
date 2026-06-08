@@ -1091,18 +1091,20 @@ class owtimefeaturesconstructor(OWWidget, ConcurrentWidgetMixin):
             return
 
         domain = expressions.domain
-        if (len(domain) < 2
-                or domain[0].name != "Variable"
-                or domain[1].name != "Expression"):
+        all_vars = {v.name: v for v in list(domain.variables) + list(domain.metas)}
+        var_col = all_vars.get("Variable")
+        expr_col = all_vars.get("Expression")
+        if var_col is None or expr_col is None:
             self.Warning.table_warning()
             return
 
         self.Error.transform_error.clear()
         for datos in reversed(expressions):
-            if not math.isnan(datos[1]) and str(datos[1]) != "NaN":
+            expr_str = str(datos[expr_col]).strip()
+            if expr_str and expr_str not in ("?", "NaN", "nan"):
                 desc = ContinuousDescriptor(
-                    name=str(datos[0]),
-                    expression=str(datos[1]),
+                    name=str(datos[var_col]).strip(),
+                    expression=expr_str,
                     meta=False,
                     number_of_decimals=3,
                 )

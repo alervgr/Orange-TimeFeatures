@@ -5,6 +5,7 @@ de email no se testean aquí (requieren entorno con servidor).
 """
 import unittest
 
+import numpy as np
 import Orange
 
 from timefeatures.widgets.owsavetodb import (
@@ -12,6 +13,9 @@ from timefeatures.widgets.owsavetodb import (
     _DIALECTS,
     _MySQLDialect,
     _PostgresDialect,
+    _dataframe_for_sql_export,
+    _iter_dataframe_chunks,
+    _sql_export_variables,
     quote_ident,
 )
 
@@ -177,6 +181,70 @@ class TestDialectsRegistry(unittest.TestCase):
         from timefeatures.widgets.owsavetodb import _MySQLBackend
         factory = _DIALECTS["MySQL"].backend_factory()
         self.assertIs(factory, _MySQLBackend)
+
+
+class TestDataFrameExport(unittest.TestCase):
+    def test_uses_legacy_column_order_with_class_and_metas(self):
+        attrs = [
+            Orange.data.ContinuousVariable("a"),
+            Orange.data.ContinuousVariable("b"),
+        ]
+        class_var = Orange.data.DiscreteVariable("c", values=["x", "y"])
+        metas = [
+            Orange.data.StringVariable("m1"),
+            Orange.data.StringVariable("m2"),
+        ]
+        domain = Orange.data.Domain(attrs, class_var, metas)
+        table = Orange.data.Table.from_numpy(
+            domain,
+            np.array([[1.0, 2.0], [3.0, 4.0]]),
+            np.array([0, 1]),
+            np.array([["foo", "bar"], ["baz", "qux"]], dtype=object),
+        )
+
+        variables = _sql_export_variables(table)
+        frame, _ = _dataframe_for_sql_export(table)
+
+        self.assertEqual([v.name for v in variables], ["c", "m2", "m1", "a", "b"])
+        self.assertEqual(list(frame.columns), ["c", "m2", "m1", "a", "b"])
+        self.assertEqual(frame.iloc[0].tolist(), ["x", "bar", "foo", 1.0, 2.0])
+
+    def test_without_class_keeps_metas_before_attributes(self):
+        attrs = [Orange.data.ContinuousVariable("a")]
+        metas = [Orange.data.StringVariable("m1")]
+        domain = Orange.data.Domain(attrs, metas=metas)
+        table = Orange.data.Table.from_numpy(
+            domain,
+            np.array([[1.0]]),
+            None,
+            np.array([["foo"]], dtype=object),
+        )
+
+        frame, _ = _dataframe_for_sql_export(table)
+
+        self.assertEqual(list(frame.columns), ["m1", "a"])
+        self.assertEqual(frame.iloc[0].tolist(), ["foo", 1.0])
+
+    def test_dataframe_chunks_include_all_rows(self):
+        import pandas as pd
+
+        frame = pd.DataFrame({"x": range(5)})
+        chunks = list(_iter_dataframe_chunks(frame, chunksize=2))
+
+        self.assertEqual([len(chunk) for chunk in chunks], [2, 2, 1])
+        self.assertEqual(
+            [value for chunk in chunks for value in chunk["x"].tolist()],
+            [0, 1, 2, 3, 4],
+        )
+
+    def test_dataframe_chunks_yield_empty_frame(self):
+        import pandas as pd
+
+        frame = pd.DataFrame({"x": []})
+        chunks = list(_iter_dataframe_chunks(frame, chunksize=2))
+
+        self.assertEqual(len(chunks), 1)
+        self.assertTrue(chunks[0].empty)
 
 
 if __name__ == "__main__":

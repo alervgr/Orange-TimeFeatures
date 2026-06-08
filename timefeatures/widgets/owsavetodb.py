@@ -8,7 +8,8 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 import Orange
-from AnyQt.QtCore import Qt
+import Orange.data.pandas_compat as pc
+from AnyQt.QtCore import QObject, QThread, Qt, pyqtSignal
 from AnyQt.QtWidgets import QComboBox
 from Orange.data import Table
 from Orange.data.sql.backend import Backend
@@ -26,6 +27,12 @@ from PyQt5.QtWidgets import (
 from orangewidget.utils.signals import Input
 
 MAX_DL_LIMIT = 1000000
+PANDAS_SQL_CHUNKSIZE = 1000
+CONNECTION_STATUS_STYLES = {
+    "neutral": "QLabel { color: #888; padding-top: 4px; }",
+    "success": "QLabel { color: #2e7d32; font-weight: 600; padding-top: 4px; }",
+    "error": "QLabel { color: #c62828; font-weight: 600; padding-top: 4px; }",
+}
 
 # PostgreSQL identifier rules: letter/underscore start, alphanumeric/_, max 63.
 # MySQL identifier rules are looser (allow digit start, 64 chars) but accepting
@@ -43,6 +50,253 @@ def is_postgres(backend):
     return getattr(backend, 'display_name', '') == "PostgreSQL"
 
 
+def _sql_export_variables(table):
+    """Return variables in the same order used by the legacy INSERT loop."""
+    domain = table.domain
+    variables = []
+    if domain.class_var:
+        variables.append(domain.class_var)
+        variables.extend(reversed(domain.metas))
+        variables.extend(domain.attributes)
+    else:
+        variables.extend(reversed(domain.metas))
+        variables.extend(domain.attributes)
+        variables.extend(domain.class_vars)
+    return variables
+
+
+def _dataframe_for_sql_export(table):
+    frame = pc.table_to_frame(table, include_metas=True)
+    variables = _sql_export_variables(table)
+    frame = frame.loc[:, [variable.name for variable in variables]].copy()
+    for column in frame.columns:
+        series = frame[column]
+        if str(getattr(series, "dtype", "")) == "category":
+            frame[column] = series.astype(object)
+    return frame, variables
+
+
+def _iter_dataframe_chunks(frame, chunksize=PANDAS_SQL_CHUNKSIZE):
+    if len(frame) == 0:
+        yield frame
+        return
+    for start in range(0, len(frame), chunksize):
+        yield frame.iloc[start:start + chunksize]
+
+
+def _sqlalchemy_dtype_for_variable(var, sqltypes, dialect_name):
+    # TimeVariable must be checked before ContinuousVariable because
+    # in Orange the former inherits from the latter.
+    if isinstance(var, Orange.data.TimeVariable):
+        return sqltypes.DateTime()
+    if isinstance(var, Orange.data.DiscreteVariable):
+        return sqltypes.String(length=255)
+    if isinstance(var, Orange.data.ContinuousVariable):
+        if dialect_name == "PostgreSQL":
+            from sqlalchemy.dialects import postgresql
+            double_precision = getattr(postgresql, "DOUBLE_PRECISION", None)
+            if double_precision is not None:
+                return double_precision()
+        if dialect_name == "MySQL":
+            from sqlalchemy.dialects import mysql
+            double = getattr(mysql, "DOUBLE", None)
+            if double is not None:
+                return double()
+        return sqltypes.Float(precision=53)
+    if isinstance(var, Orange.data.StringVariable):
+        return sqltypes.Text()
+    return sqltypes.Text()
+
+
+def _sqlalchemy_modules():
+    try:
+        from sqlalchemy import create_engine, text, types as sqltypes
+        from sqlalchemy.engine import URL
+    except ImportError as ex:
+        raise BackendError(
+            "SQLAlchemy support is required to save data. "
+            "Install it with: pip install SQLAlchemy"
+        ) from ex
+    return create_engine, URL, text, sqltypes
+
+
+def _create_sqlalchemy_engine(dialect, host, port, database, username, password):
+    create_engine, URL, _, _ = _sqlalchemy_modules()
+    try:
+        db_port = int(port) if port else None
+        url = URL.create(
+            drivername=dialect.sqlalchemy_drivername,
+            username=username,
+            password=password,
+            host=host,
+            port=db_port,
+            database=database,
+        )
+        return create_engine(url)
+    except Exception as ex:
+        raise BackendError(str(ex)) from ex
+
+
+def _create_master_table_sql(dialect):
+    qi = dialect.quote_ident
+    return f"""
+    CREATE TABLE IF NOT EXISTS {qi('datasets')} (
+        {qi('name')} VARCHAR(63) PRIMARY KEY NOT NULL,
+        {qi('datetime')} TIMESTAMP NOT NULL,
+        {qi('rows')} INT NOT NULL,
+        {qi('cols')} INT NOT NULL,
+        {qi('class')} VARCHAR(30),
+        {qi('class_name')} VARCHAR(63)
+    )
+    """
+
+
+def _insert_metadata_sql(dialect):
+    qi = dialect.quote_ident
+    return (
+        f"INSERT INTO {qi('datasets')} "
+        f"({qi('name')}, {qi('datetime')}, {qi('rows')}, "
+        f"{qi('cols')}, {qi('class')}, {qi('class_name')}) "
+        "VALUES (:dataset_name, :created_at, :row_count, :col_count, "
+        ":target_type, :class_name)"
+    )
+
+
+def _send_completion_mail(
+        mail, selected_backend, server_text, database_text, table_name,
+        rows_text, cols_text, class_name, target_text, time_elapsed):
+    # Configuración de la conexión
+    sender = 'savetodbodm@gmail.com'
+    password = 'arnj lakd lyol rakg'
+    server = 'smtp.gmail.com'
+    port = 587
+
+    message = MIMEMultipart("alternative")
+
+    current_datetime = datetime.now()
+    formatted_datetime = current_datetime.strftime('%d-%m-%Y %H:%M:%S')
+
+    message["Subject"] = "Upload completed - Save To DB - " + str(formatted_datetime)
+    message["From"] = sender
+    message["To"] = mail
+
+    body = f"""\
+    <html>
+        <head>
+        </head>
+        <body>
+            <h1>Save to DB - Widget</h1>
+            <p>Your data upload has been completed!</p>
+            <p>-Table information:</p>
+            <ul>
+                <li>Table name: {table_name}.</li>
+                <li>{rows_text}.</li>
+                <li>{cols_text}.</li>
+                <li>Class name: {class_name}.</li>
+                <li>{target_text}.</li>
+            </ul>
+            <p>-Connection information:</p>
+            <ul>
+                <li>Backend: {selected_backend}.</li>
+                <li>Server: {server_text}.</li>
+                <li>Database name: {database_text}.</li>
+                <li>Time Elapsed: {time_elapsed}s.</li>
+            </ul>
+        </body>
+    </html>
+    """
+
+    part = MIMEText(body, "html")
+    message.attach(part)
+
+    context = ssl.create_default_context()
+    with smtplib.SMTP(server, port=port) as smtp:
+        smtp.starttls(context=context)
+        smtp.login(sender, password)
+        smtp.send_message(message)
+
+
+class _UploadWorker(QObject):
+    progress_changed = pyqtSignal(float)
+    status_changed = pyqtSignal(str)
+    finished = pyqtSignal(float)
+    failed = pyqtSignal(str)
+
+    def __init__(self, *, table, dialect, connection_params, metadata,
+                 email_params):
+        super().__init__()
+        self.table = table
+        self.dialect = dialect
+        self.connection_params = connection_params
+        self.metadata = metadata
+        self.email_params = email_params
+
+    def run(self):
+        start_time = time.time()
+        engine = None
+        try:
+            self.status_changed.emit("Preparing data...")
+            self.progress_changed.emit(2)
+            frame, variables = _dataframe_for_sql_export(self.table)
+            _, _, text, sqltypes = _sqlalchemy_modules()
+            dtype = {
+                variable.name: _sqlalchemy_dtype_for_variable(
+                    variable, sqltypes, self.dialect.name
+                )
+                for variable in variables
+            }
+
+            self.status_changed.emit("Connecting to database...")
+            self.progress_changed.emit(8)
+            engine = _create_sqlalchemy_engine(self.dialect, **self.connection_params)
+
+            total_chunks = (
+                (len(frame) + PANDAS_SQL_CHUNKSIZE - 1) //
+                PANDAS_SQL_CHUNKSIZE
+            ) or 1
+
+            with engine.begin() as connection:
+                self.status_changed.emit("Creating metadata table...")
+                connection.execute(text(_create_master_table_sql(self.dialect)))
+                self.progress_changed.emit(12)
+
+                self.status_changed.emit("Writing dataset metadata...")
+                connection.execute(
+                    text(_insert_metadata_sql(self.dialect)),
+                    self.metadata["params"],
+                )
+                self.progress_changed.emit(18)
+
+                for index, chunk in enumerate(_iter_dataframe_chunks(frame)):
+                    self.status_changed.emit(
+                        f"Uploading rows {index + 1}/{total_chunks}..."
+                    )
+                    chunk.to_sql(
+                        self.metadata["table_name"],
+                        con=connection,
+                        if_exists="fail" if index == 0 else "append",
+                        index=False,
+                        dtype=dtype,
+                        method="multi",
+                    )
+                    self.progress_changed.emit(
+                        18 + ((index + 1) * 82 / total_chunks)
+                    )
+
+            time_elapsed = round(time.time() - start_time, 3)
+            if self.email_params["mail"]:
+                self.status_changed.emit("Sending completion email...")
+                _send_completion_mail(time_elapsed=time_elapsed, **self.email_params)
+
+            self.progress_changed.emit(100)
+            self.finished.emit(time_elapsed)
+        except Exception as ex:
+            self.failed.emit(str(ex))
+        finally:
+            if engine is not None:
+                engine.dispose()
+
+
 # --------------------------------------------------------------------- #
 #  Dialect abstraction
 # --------------------------------------------------------------------- #
@@ -52,6 +306,7 @@ class _Dialect:
     matching Orange's Backend interface."""
 
     name = ""
+    sqlalchemy_drivername = ""
 
     @staticmethod
     def quote_ident(name):  # pragma: no cover - abstract
@@ -67,6 +322,7 @@ class _Dialect:
 
 class _PostgresDialect(_Dialect):
     name = "PostgreSQL"
+    sqlalchemy_drivername = "postgresql+psycopg2"
 
     @staticmethod
     def quote_ident(name):
@@ -95,6 +351,7 @@ class _PostgresDialect(_Dialect):
 
 class _MySQLDialect(_Dialect):
     name = "MySQL"
+    sqlalchemy_drivername = "mysql+pymysql"
 
     @staticmethod
     def quote_ident(name):
@@ -214,10 +471,14 @@ class owsavetodb(OWBaseSql, OWWidget):
     def __init__(self):
         # Lint
         self.backendcombo = None
+        self.connection_status_label = None
         self.data = None
         self.rows = 0
         self.cols = 0
         self.target = None
+        self._uploading = False
+        self._upload_thread = None
+        self._upload_worker = None
         super().__init__()
 
     # ------------------------------------------------------------------ #
@@ -237,7 +498,7 @@ class owsavetodb(OWBaseSql, OWWidget):
     def setData(self, data=None):
 
         self.data = data
-        self.btn_savedata.setEnabled(bool(self.data))
+        self.btn_savedata.setEnabled(bool(self.data) and not self._uploading)
         target_variable = ""
         if self.data is not None:
             self.rows = len(self.data)
@@ -285,6 +546,7 @@ class owsavetodb(OWBaseSql, OWWidget):
         self.btn_savedata.setEnabled(False)
         layoutA.addWidget(self.btn_savedata, 4, 2)
         self._add_backend_controls()
+        self._add_connection_status()
 
     def _add_backend_controls(self):
         box = self.serverbox
@@ -299,98 +561,41 @@ class owsavetodb(OWBaseSql, OWWidget):
         self.backendcombo.currentTextChanged.connect(self.__backend_changed)
         box.layout().insertWidget(0, self.backendcombo)
 
+    def _add_connection_status(self):
+        self.connection_status_label = QLabel()
+        self.connection_status_label.setWordWrap(True)
+        self.serverbox.layout().addWidget(self.connection_status_label)
+        self._set_connection_status("Not connected", "neutral")
+
+    def _set_connection_status(self, text, state="neutral"):
+        if self.connection_status_label is None:
+            return
+        self.connection_status_label.setText(text)
+        self.connection_status_label.setStyleSheet(
+            CONNECTION_STATUS_STYLES.get(
+                state, CONNECTION_STATUS_STYLES["neutral"]
+            )
+        )
+
     def __backend_changed(self):
+        if self._uploading:
+            return
         self.selected_backend = self.backendcombo.currentText()
+        self.backend = None
+        self._set_connection_status("Not connected", "neutral")
+
+    def connect(self):
+        if self._uploading:
+            return
+        self.backend = None
+        self._set_connection_status("Connecting...", "neutral")
+        super().connect()
+        if self.backend is None and not self.Error.connection.is_shown():
+            self._set_connection_status("Not connected", "neutral")
 
     # ------------------------------------------------------------------ #
     #  Data persistence
     # ------------------------------------------------------------------ #
-    def create_master_table(self):
-        qi = self.dialect.quote_ident
-        query = f"""
-        CREATE TABLE IF NOT EXISTS {qi('datasets')} (
-            {qi('name')} VARCHAR(63) PRIMARY KEY NOT NULL,
-            {qi('datetime')} TIMESTAMP NOT NULL,
-            {qi('rows')} INT NOT NULL,
-            {qi('cols')} INT NOT NULL,
-            {qi('class')} VARCHAR(30),
-            {qi('class_name')} VARCHAR(63)
-        )
-        """
-        try:
-            with self.backend.execute_sql_query(query):
-                pass
-        except BackendError as ex:
-            self.Error.connection(str(ex))
-
-    def create_table(self, table_name):
-        start_time = time.time()
-        self.progressBarInit()
-        contBar = 0
-        contMetasOriginales = 0
-        cont = 0
-        variables = []
-        tiene_class = 0
-
-        if self.data.domain.class_var:
-            variables.append(self.data.domain.class_var)
-            tiene_class += 1
-
-        for i in range(0, len(self.data.domain) - tiene_class):
-
-            if contMetasOriginales == 0:
-                contMetasOriginales += len(self.data.domain.metas)
-                cont = contMetasOriginales
-            if cont > 0:
-                i -= cont
-
-            variables.append(self.data.domain[i])
-
-        qi = self.dialect.quote_ident
-        ct = self.dialect.column_type
-        col_defs = ", ".join(
-            f"{qi(variable.name)} {ct(variable)}"
-            for variable in variables
-        )
-        create_table_query = f"CREATE TABLE {qi(table_name)} ({col_defs})"
-
-        try:
-            with self.backend.execute_sql_query(create_table_query):
-                pass
-        except BackendError as ex:
-            self.Error.connection(str(ex))
-
-        placeholders = ", ".join(["%s"] * len(variables))
-        insert_query = (
-            f"INSERT INTO {qi(table_name)} VALUES ({placeholders})"
-        )
-
-        for instance in self.data:
-            data_row = []
-            contBar += 1
-            self.progressBarSet((contBar + 1) * 100 / len(self.data))
-
-            for i in range(len(variables)):
-                if cont > 0:
-                    i -= cont
-                data_row.append(instance[i].value)
-            if self.data.domain.class_var:
-                class_value = data_row[-1]  # Obtiene el valor de la clase
-                del data_row[-1]            # Elimina la clase de su posición anterior
-                data_row.insert(0, class_value)  # Inserta la clase al principio
-            try:
-                with self.backend.execute_sql_query(insert_query, params=data_row):
-                    pass
-            except BackendError as ex:
-                self.Error.connection(str(ex))
-
-        self.progressBarFinished()
-        if str(self.emailDirection.text()) != "":
-            end_time = time.time()
-            time_elapsed = end_time - start_time
-            time_elapsed = round(time_elapsed, 3)
-            self.send_mail(str(self.emailDirection.text()), time_elapsed)
-
     def send_mail(self, mail, time_elapsed):
 
         # Configuración de la conexión
@@ -457,6 +662,8 @@ class owsavetodb(OWBaseSql, OWWidget):
             self.Error.connection(str(ex))
 
     def saveData(self):
+        if self._uploading:
+            return
 
         self.clear()
 
@@ -480,7 +687,15 @@ class owsavetodb(OWBaseSql, OWWidget):
             self.insert_data()
 
     def insert_data(self):
-        self.create_master_table()
+        if self.backend is None:
+            self.Error.connection("Connect to a database before saving.")
+            return
+
+        try:
+            _sqlalchemy_modules()
+        except BackendError as ex:
+            self.Error.connection(str(ex))
+            return
 
         if self.data.domain.class_var:
             class_name = self.data.domain.class_var.name
@@ -488,30 +703,103 @@ class owsavetodb(OWBaseSql, OWWidget):
             class_name = None
 
         table_name = self.tableName.text().lower()
-        qi = self.dialect.quote_ident
-        # No schema qualifier: works in PostgreSQL (uses `public` by default)
-        # and in MySQL (no schema concept).
-        query = (
-            f"INSERT INTO {qi('datasets')} "
-            f"({qi('name')}, {qi('datetime')}, {qi('rows')}, "
-            f"{qi('cols')}, {qi('class')}, {qi('class_name')}) "
-            "VALUES (%s, %s, %s, %s, %s, %s)"
-        )
-        params = [
-            table_name,
-            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            self.rows,
-            self.cols,
-            str(self.target),
-            class_name,
-        ]
+        self._start_upload(table_name, class_name)
 
-        try:
-            with self.backend.execute_sql_query(query, params=params):
-                pass
-            self.create_table(table_name)
-        except BackendError as ex:
-            self.Error.connection(str(ex))
+    def _start_upload(self, table_name, class_name):
+        self._check_db_settings()
+        metadata = {
+            "table_name": table_name,
+            "params": {
+                "dataset_name": table_name,
+                "created_at": datetime.now(),
+                "row_count": self.rows,
+                "col_count": self.cols,
+                "target_type": str(self.target),
+                "class_name": class_name,
+            },
+        }
+        connection_params = {
+            "host": self.host,
+            "port": self.port,
+            "database": self.database,
+            "username": self.username,
+            "password": self.password,
+        }
+        email_params = {
+            "mail": str(self.emailDirection.text()),
+            "selected_backend": self.selected_backend,
+            "server_text": str(self.servertext.text()),
+            "database_text": str(self.databasetext.text()),
+            "table_name": str(self.tableName.text()),
+            "rows_text": str(self.rows_label.text()),
+            "cols_text": str(self.cols_label.text()),
+            "class_name": class_name,
+            "target_text": str(self.target_label.text()),
+        }
+
+        self._uploading = True
+        self._set_upload_controls_enabled(False)
+        self.progressBarInit()
+        self.progressBarSet(0)
+        self._set_connection_status("Starting upload...", "neutral")
+
+        self._upload_thread = QThread(self)
+        self._upload_worker = _UploadWorker(
+            table=self.data,
+            dialect=self.dialect,
+            connection_params=connection_params,
+            metadata=metadata,
+            email_params=email_params,
+        )
+        self._upload_worker.moveToThread(self._upload_thread)
+        self._upload_thread.started.connect(self._upload_worker.run)
+        self._upload_worker.progress_changed.connect(self.progressBarSet)
+        self._upload_worker.status_changed.connect(self._on_upload_status)
+        self._upload_worker.finished.connect(self._on_upload_finished)
+        self._upload_worker.failed.connect(self._on_upload_failed)
+        self._upload_worker.finished.connect(lambda _: self._upload_thread.quit())
+        self._upload_worker.failed.connect(lambda _: self._upload_thread.quit())
+        self._upload_thread.finished.connect(self._upload_worker.deleteLater)
+        self._upload_thread.finished.connect(self._upload_thread.deleteLater)
+        self._upload_thread.finished.connect(self._on_upload_thread_finished)
+        self._upload_thread.start()
+
+    def _on_upload_status(self, message):
+        self._set_connection_status(message, "neutral")
+
+    def _on_upload_finished(self, time_elapsed):
+        self.progressBarSet(100)
+        self.progressBarFinished()
+        self._uploading = False
+        self._set_upload_controls_enabled(True)
+        self._set_connection_status(
+            f"Upload completed in {time_elapsed}s", "success"
+        )
+
+    def _on_upload_failed(self, message):
+        self.progressBarFinished()
+        self._uploading = False
+        self._set_upload_controls_enabled(True)
+        self.Error.connection(message)
+        self._set_connection_status(f"Upload failed: {message}", "error")
+
+    def _on_upload_thread_finished(self):
+        self._upload_thread = None
+        self._upload_worker = None
+
+    def _set_upload_controls_enabled(self, enabled):
+        for widget in (
+                self.connectbutton, self.btn_savedata, self.backendcombo,
+                self.servertext, self.databasetext, self.usernametext,
+                self.passwordtext, self.tableName, self.emailDirection):
+            widget.setEnabled(enabled)
+        self.btn_savedata.setEnabled(enabled and bool(self.data))
+
+    def onDeleteWidget(self):
+        if self._upload_thread is not None and self._upload_thread.isRunning():
+            self._upload_thread.quit()
+            self._upload_thread.wait()
+        super().onDeleteWidget()
 
     def highlight_error(self, text=""):
         err = ['', 'QLineEdit {border: 2px solid red;}']
@@ -531,10 +819,18 @@ class owsavetodb(OWBaseSql, OWWidget):
 
     def on_connection_success(self):
         super().on_connection_success()
+        port = f":{self.port}" if self.port else ""
+        self._set_connection_status(
+            f"Connected to {self.selected_backend}: "
+            f"{self.host}{port}/{self.database}",
+            "success",
+        )
 
     def on_connection_error(self, err):
         super().on_connection_error(err)
-        self.highlight_error(str(err).split("\n")[0])
+        message = str(err).split("\n")[0]
+        self.highlight_error(message)
+        self._set_connection_status(f"Connection failed: {message}", "error")
 
     def clear(self):
         self.Error.connection.clear()

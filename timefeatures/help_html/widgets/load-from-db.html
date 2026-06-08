@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Load from DB &#8212; TimeFeatures documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=686e5160" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=f6a572b4" />
+    <script src="../_static/documentation_options.js?v=14ed45bf"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Changelog" href="../changes.html" />
+    <link rel="prev" title="Save to DB" href="save-to-db.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  <div class="document">
+    
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">TimeFeatures</a></h1>
+
+
+
+<p class="blurb">Time-series feature engineering for Orange3: build derived variables, visualise their dependencies, and persist data to PostgreSQL.</p>
+
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=alervgr&repo=Orange-TimeFeatures&type=watch&count=true&size=large&v=2"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+</ul>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="time-feature-constructor.html">Time Features Constructor</a></li>
+<li class="toctree-l1"><a class="reference internal" href="variable-dependency-graph.html">Variable Dependency Graph</a></li>
+<li class="toctree-l1"><a class="reference internal" href="save-to-db.html">Save to DB</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Load from DB</a></li>
+</ul>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../changes.html">Changelog</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="save-to-db.html" title="previous chapter">Save to DB</a></li>
+      <li>Next: <a href="../changes.html" title="next chapter">Changelog</a></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="load-from-db">
+<h1>Load from DB<a class="headerlink" href="#load-from-db" title="Link to this heading">¶</a></h1>
+<p>The <strong>Load from DB</strong> widget is the inverse of <a class="reference internal" href="save-to-db.html"><span class="doc">Save to DB</span></a>. It
+connects to a SQL database, lists the datasets previously persisted by
+<strong>Save to DB</strong>, and pulls the selected one back into Orange as a
+<code class="docutils literal notranslate"><span class="pre">Table</span></code> — optionally marking the class column on the fly so no
+<strong>Select Columns</strong> widget is needed downstream.</p>
+<section id="inputs">
+<h2>Inputs<a class="headerlink" href="#inputs" title="Link to this heading">¶</a></h2>
+<p>This widget has no input signals.</p>
+</section>
+<section id="outputs">
+<h2>Outputs<a class="headerlink" href="#outputs" title="Link to this heading">¶</a></h2>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Signal</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Data</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Orange.data.Table</span></code></p></td>
+<td><p>The loaded dataset. If the user picks a class column, the
+resulting domain already exposes it as the class variable; all
+other columns stay in <code class="docutils literal notranslate"><span class="pre">domain.attributes</span></code> and the metas
+declared in the SQL schema (if any) remain as <code class="docutils literal notranslate"><span class="pre">domain.metas</span></code>.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="controls">
+<h2>Controls<a class="headerlink" href="#controls" title="Link to this heading">¶</a></h2>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Database type</p></td>
+<td><p>Combo box at the top of the connection box. Pick <strong>PostgreSQL</strong>
+or <strong>MySQL</strong>. The driver and quoting rules adapt automatically
+through the same <code class="xref py py-class docutils literal notranslate"><span class="pre">_Dialect</span></code> abstraction the <strong>Save to
+DB</strong> widget uses.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Connection status</p></td>
+<td><p>Small label under the connection box. Shows three states:
+neutral (“Not connected”, “Connecting…”, “Listing datasets…”,
+“Loading &lt;name&gt;…”), success (“Connected to PostgreSQL:
+host/db (N datasets)”, “Loaded &lt;name&gt; (N rows)”), error
+(“Connection failed: …”, “Load failed: …”).</p></td>
+</tr>
+<tr class="row-even"><td><p>Dataset</p></td>
+<td><p>Combo populated from <code class="docutils literal notranslate"><span class="pre">SELECT</span> <span class="pre">*</span> <span class="pre">FROM</span> <span class="pre">datasets</span> <span class="pre">ORDER</span> <span class="pre">BY</span>
+<span class="pre">datetime</span> <span class="pre">DESC</span></code>. The most recent upload comes first; the last
+choice is restored when reopening a workflow.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Dataset info</p></td>
+<td><p>Read-only block under the combo: save timestamp, row/column
+counts and the original class column recorded by <strong>Save to DB</strong>.</p></td>
+</tr>
+<tr class="row-even"><td><p>Class column</p></td>
+<td><p>Combo with every column of the selected dataset plus a
+<code class="docutils literal notranslate"><span class="pre">(no</span> <span class="pre">class)</span></code> sentinel. Defaults to (1) the user’s persisted
+choice, (2) the <code class="docutils literal notranslate"><span class="pre">class_name</span></code> stored in the <code class="docutils literal notranslate"><span class="pre">datasets</span></code>
+metadata, (3) <code class="docutils literal notranslate"><span class="pre">(no</span> <span class="pre">class)</span></code> if none of the above apply.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Load</p></td>
+<td><p>Triggers the actual download.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="how-it-works">
+<h2>How it Works<a class="headerlink" href="#how-it-works" title="Link to this heading">¶</a></h2>
+<p>When the <strong>Connect</strong> button is clicked, the widget validates the
+connection through <code class="docutils literal notranslate"><span class="pre">OWBaseSql</span></code> (the same path Save to DB uses) and
+then spawns a background <code class="docutils literal notranslate"><span class="pre">QThread</span></code> that runs a
+<code class="docutils literal notranslate"><span class="pre">_ListDatasetsWorker</span></code>. The worker queries the <code class="docutils literal notranslate"><span class="pre">datasets</span></code> metadata
+table via SQLAlchemy and emits the result back to the GUI thread.</p>
+<p>Selecting a dataset triggers a tiny <code class="docutils literal notranslate"><span class="pre">SELECT</span> <span class="pre">*</span> <span class="pre">FROM</span> <span class="pre">&lt;name&gt;</span> <span class="pre">LIMIT</span> <span class="pre">0</span></code>
+to fetch the column list — this is cheap enough to run synchronously
+because the server only returns the column header.</p>
+<p>When <strong>Load</strong> is clicked, a <code class="docutils literal notranslate"><span class="pre">_LoadTableWorker</span></code> runs
+<code class="docutils literal notranslate"><span class="pre">pandas.read_sql(&quot;SELECT</span> <span class="pre">*</span> <span class="pre">FROM</span> <span class="pre">&lt;name&gt;&quot;,</span> <span class="pre">engine)</span></code> on a background
+thread, returning a DataFrame that the GUI thread converts into an
+<code class="docutils literal notranslate"><span class="pre">Orange.data.Table</span></code> with
+<code class="docutils literal notranslate"><span class="pre">Orange.data.pandas_compat.table_from_frame</span></code>. If the user picked a
+class column, the helper <code class="docutils literal notranslate"><span class="pre">_build_domain_with_class</span></code> rebuilds the
+domain so that column becomes <code class="docutils literal notranslate"><span class="pre">domain.class_var</span></code> and the rest of the
+columns stay in <code class="docutils literal notranslate"><span class="pre">domain.attributes</span></code>.</p>
+<p>While any worker runs, the form controls (database type, connection
+fields, <strong>Connect</strong>, <strong>Load</strong>, dataset and class combos) are
+temporarily disabled and the status label keeps the user informed.</p>
+</section>
+<section id="workflow-persistence">
+<h2>Workflow Persistence<a class="headerlink" href="#workflow-persistence" title="Link to this heading">¶</a></h2>
+<p>Two <code class="docutils literal notranslate"><span class="pre">Setting</span></code>\s are persisted with the workflow:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">selected_dataset</span></code> — the name picked in the Dataset combo.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">selected_class</span></code> — the name picked in the Class combo
+(<code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> means “no class”).</p></li>
+</ul>
+<p>Both are declared as <code class="docutils literal notranslate"><span class="pre">Setting(...,</span> <span class="pre">schema_only=True)</span></code>, mirroring the
+<strong>Time Features Constructor</strong> convention: the values live in the
+<code class="docutils literal notranslate"><span class="pre">.ows</span></code> file but never become global defaults. On reopening a
+workflow, the widget restores the choices as soon as the connection
+succeeds and the dataset list arrives.</p>
+</section>
+<section id="usage-example">
+<h2>Usage Example<a class="headerlink" href="#usage-example" title="Link to this heading">¶</a></h2>
+<p>Round-tripping a dataset through the database:</p>
+<ol class="arabic simple">
+<li><p>In one Orange workflow, attach a <strong>File</strong> widget to <strong>Save to DB</strong>
+and upload the data with a chosen table name.</p></li>
+<li><p>In another workflow (or the same one), drop a <strong>Load from DB</strong>
+widget.</p></li>
+<li><p>Pick the database type, fill in the connection fields, and click
+<strong>Connect</strong>.</p></li>
+<li><p>Pick the dataset in the Dataset combo. The info block shows the
+timestamp and the original class.</p></li>
+<li><p>Override the Class column if you want a different target, or leave
+the default to keep the original one.</p></li>
+<li><p>Click <strong>Load</strong>. The table flows out of the <strong>Data</strong> output ready
+for any downstream Orange widget — no <strong>Select Columns</strong> in
+between.</p></li>
+</ol>
+</section>
+<section id="requirements">
+<h2>Requirements<a class="headerlink" href="#requirements" title="Link to this heading">¶</a></h2>
+<p>TimeFeatures brings every dependency the widget needs:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>SQLAlchemy&gt;=1.4.0       # dialect-agnostic SQL toolkit
+psycopg2-binary&gt;=2.9.9  # PostgreSQL driver
+PyMySQL&gt;=1.0.0          # MySQL driver
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">pandas</span></code> itself is a transitive dependency of Orange3.</p>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+    <div class="clearer"></div>
+  </div>
+    <div class="footer">
+      &#169;2026, Alejandro Rivas Garcia.
+      
+      |
+      <a href="../_sources/widgets/load-from-db.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+    <a href="https://github.com/alervgr/Orange-TimeFeatures" class="github">
+        <img src="../_static/github-banner.svg" alt="Fork me on GitHub" class="github"/>
+    </a>
+    
+
+    
+  </body>
+</html>

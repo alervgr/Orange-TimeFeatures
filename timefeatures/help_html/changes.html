@@ -14,7 +14,7 @@
     <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="prev" title="Save to DB" href="widgets/save-to-db.html" />
+    <link rel="prev" title="Load from DB" href="widgets/load-from-db.html" />
    
   <link rel="stylesheet" href="_static/custom.css" type="text/css" />
   
@@ -62,6 +62,7 @@
 <li class="toctree-l1"><a class="reference internal" href="widgets/time-feature-constructor.html">Time Features Constructor</a></li>
 <li class="toctree-l1"><a class="reference internal" href="widgets/variable-dependency-graph.html">Variable Dependency Graph</a></li>
 <li class="toctree-l1"><a class="reference internal" href="widgets/save-to-db.html">Save to DB</a></li>
+<li class="toctree-l1"><a class="reference internal" href="widgets/load-from-db.html">Load from DB</a></li>
 </ul>
 <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Changelog</a></li>
@@ -71,7 +72,7 @@
 <h3>Related Topics</h3>
 <ul>
   <li><a href="index.html">Documentation overview</a><ul>
-      <li>Previous: <a href="widgets/save-to-db.html" title="previous chapter">Save to DB</a></li>
+      <li>Previous: <a href="widgets/load-from-db.html" title="previous chapter">Load from DB</a></li>
   </ul></li>
 </ul>
 </div>
@@ -95,6 +96,25 @@
 <h1>Changelog<a class="headerlink" href="#changelog" title="Link to this heading">¶</a></h1>
 <section id="unreleased">
 <h2>Unreleased<a class="headerlink" href="#unreleased" title="Link to this heading">¶</a></h2>
+<p><strong>Load from DB (new widget)</strong></p>
+<ul class="simple">
+<li><p>Lists every dataset registered in the <code class="docutils literal notranslate"><span class="pre">datasets</span></code> metadata table
+via SQLAlchemy and pulls the selected one back into Orange as an
+<code class="docutils literal notranslate"><span class="pre">Orange.data.Table</span></code> using <code class="docutils literal notranslate"><span class="pre">pandas.read_sql</span></code> +
+<code class="docutils literal notranslate"><span class="pre">Orange.data.pandas_compat.table_from_frame</span></code>.</p></li>
+<li><p>Offers a Class column combo populated from the dataset’s columns,
+pre-selected with the user’s persisted choice or the <code class="docutils literal notranslate"><span class="pre">class_name</span></code>
+recorded by Save to DB. The output <code class="docutils literal notranslate"><span class="pre">Table</span></code> already exposes the
+chosen column as <code class="docutils literal notranslate"><span class="pre">domain.class_var</span></code>, so no Select Columns widget
+is needed downstream.</p></li>
+<li><p>Same dialect selector (PostgreSQL / MySQL), connection-status
+label and <code class="docutils literal notranslate"><span class="pre">QThread</span></code> worker pattern as Save to DB. Both the
+metadata listing and the actual table read happen off the GUI
+thread.</p></li>
+<li><p>Workflow-persisted settings: <code class="docutils literal notranslate"><span class="pre">selected_dataset</span></code> and
+<code class="docutils literal notranslate"><span class="pre">selected_class</span></code> are <code class="docutils literal notranslate"><span class="pre">Setting(...,</span> <span class="pre">schema_only=True)</span></code>, restored
+as soon as the connection comes back up on reload.</p></li>
+</ul>
 <p><strong>Variable Dependency Graph</strong></p>
 <ul class="simple">
 <li><p><em>New:</em> edges now carry <strong>numeric weights</strong> equal to the largest
@@ -141,11 +161,25 @@ the expression.</p></li>
 <p><strong>Save to DB</strong></p>
 <ul class="simple">
 <li><p><em>New:</em> <strong>MySQL support</strong>. The connection panel now exposes a
-database-type selector (PostgreSQL / MySQL). MySQL is reached
-through a lightweight <code class="docutils literal notranslate"><span class="pre">pymysql</span></code> wrapper that mimics Orange’s
-Backend interface, so the rest of the widget code is unchanged.
-Per-dialect column types and identifier quoting (<code class="docutils literal notranslate"><span class="pre">&quot;name&quot;</span></code> vs
-<code class="docutils literal notranslate"><span class="pre">\`name\`</span></code>) are encapsulated in a <code class="docutils literal notranslate"><span class="pre">_Dialect</span></code> abstraction.</p></li>
+database-type selector (PostgreSQL / MySQL). Per-dialect column
+types and identifier quoting (<code class="docutils literal notranslate"><span class="pre">&quot;name&quot;</span></code> vs <code class="docutils literal notranslate"><span class="pre">\`name\`</span></code>) live in
+a <code class="docutils literal notranslate"><span class="pre">_Dialect</span></code> abstraction.</p></li>
+<li><p><em>Performance:</em> uploads now go through
+<code class="docutils literal notranslate"><span class="pre">Orange.data.pandas_compat.table_to_frame</span></code> +
+<code class="docutils literal notranslate"><span class="pre">DataFrame.to_sql(method='multi',</span> <span class="pre">chunksize=1000)</span></code> over a
+SQLAlchemy engine. The old row-per-INSERT loop is gone — typical
+speedups are 50-100×, especially over the network. Identifier
+quoting and per-column DDL types are emitted by the SQLAlchemy
+dialect (<code class="docutils literal notranslate"><span class="pre">DOUBLE_PRECISION</span></code> on PostgreSQL, <code class="docutils literal notranslate"><span class="pre">DOUBLE</span></code> on MySQL,
+<code class="docutils literal notranslate"><span class="pre">DATETIME</span></code> instead of <code class="docutils literal notranslate"><span class="pre">TIMESTAMP</span></code> on MySQL to dodge the 2038
+cap, <code class="docutils literal notranslate"><span class="pre">VARCHAR(255)</span></code> / <code class="docutils literal notranslate"><span class="pre">TEXT</span></code> everywhere else).</p></li>
+<li><p><em>UX:</em> the upload runs in a background <code class="docutils literal notranslate"><span class="pre">QThread</span></code> (<code class="docutils literal notranslate"><span class="pre">_UploadWorker</span></code>),
+so the canvas stays interactive on long writes. A status label under
+the connection box reports <em>Not connected</em> / <em>Connected to … : …</em> /
+<em>Uploading rows N/M…</em> / <em>Upload completed in Xs</em> / <em>Upload failed:
+…</em> with colour cues. <strong>Save</strong>, <strong>Connect</strong> and the form fields are
+disabled while the worker runs and re-enabled on success or
+failure; the widget aborts the thread cleanly on close.</p></li>
 <li><p><em>Fixed (critical):</em> SQL injection in the metadata <code class="docutils literal notranslate"><span class="pre">INSERT</span></code>. The
 query is now fully parametrised.</p></li>
 <li><p>Added an identifier whitelist

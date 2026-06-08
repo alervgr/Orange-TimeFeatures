@@ -71,9 +71,15 @@ Dependencies
    * - ``AnyQt``
      - 0.2.0
      - Qt abstraction used by Orange.
+   * - ``SQLAlchemy``
+     - 1.4.0
+     - Dialect-agnostic SQL toolkit used by **Save to DB**.
    * - ``psycopg2-binary``
      - 2.9.9
-     - PostgreSQL backend for **Save to DB**.
+     - PostgreSQL driver for **Save to DB**.
+   * - ``PyMySQL``
+     - 1.0.0
+     - MySQL driver for **Save to DB**.
    * - ``Orange3-Network``
      - 1.8.0
      - ``Network`` type produced by **Variable Dependency Graph**.

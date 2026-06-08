@@ -100,9 +100,14 @@ def build_dependency_network(config_table):
         ``var_type`` (Derived / Original). El sparse matrix de aristas
         tiene los pesos numéricos como valores.
     """
-    # 1. Una sola pasada para extraer (nombre saneado, expresión opcional).
+    # 1. Localizar las columnas por nombre (pueden ser atributos o metas).
+    all_vars = {v.name: v for v in
+                list(config_table.domain.variables) + list(config_table.domain.metas)}
+    var_col = all_vars["Variable"]
+    expr_col = all_vars["Expression"]
+
     rows = [
-        (_sanitize_name(row[0]), _expression_or_none(row[1]))
+        (_sanitize_name(row[var_col]), _expression_or_none(row[expr_col]))
         for row in config_table
     ]
 
@@ -235,9 +240,8 @@ class owvardependencygraph(OWWidget, ConcurrentWidgetMixin):
             return
 
         domain = data.domain
-        if (len(domain) < 2
-                or domain[0].name != "Variable"
-                or domain[1].name != "Expression"):
+        all_names = {v.name for v in list(domain.variables) + list(domain.metas)}
+        if "Variable" not in all_names or "Expression" not in all_names:
             self.Error.generation_error(
                 "Input must be a configuration table with 'Variable' and "
                 "'Expression' columns."

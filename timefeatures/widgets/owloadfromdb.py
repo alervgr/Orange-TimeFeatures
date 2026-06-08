@@ -1,0 +1,553 @@
+"""Load datasets persisted by the **Save to DB** widget directly into
+an Orange ``Table``, optionally marking the class column on the fly so
+no Select Columns widget is needed downstream."""
+
+import Orange
+import Orange.data.pandas_compat as pc
+from AnyQt.QtCore import QObject, QThread, pyqtSignal
+from AnyQt.QtWidgets import (
+    QComboBox, QGridLayout, QLabel, QPushButton,
+)
+
+from Orange.data import Domain
+from Orange.widgets import gui
+from Orange.widgets.settings import Setting
+from Orange.widgets.utils.owbasesql import OWBaseSql
+from Orange.widgets.utils.widgetpreview import WidgetPreview
+from Orange.widgets.widget import Msg, Output, OWWidget
+
+from timefeatures.widgets.owsavetodb import (
+    CONNECTION_STATUS_STYLES,
+    _DIALECTS,
+    _create_sqlalchemy_engine,
+    _sqlalchemy_modules,
+)
+
+
+# Sentinel label used inside the class-column combo when the user wants
+# the dataset loaded without a class.
+_NO_CLASS_LABEL = "(no class)"
+
+
+def _build_domain_with_class(domain, class_name):
+    """Return a new :class:`~Orange.data.Domain` where ``class_name`` (a
+    string) becomes the class variable.
+
+    The column is moved out of ``domain.attributes`` into the class slot;
+    metas are preserved. If ``class_name`` is empty or not in the
+    attributes, the original domain is returned unchanged.
+    """
+    if not class_name:
+        return domain
+    class_var = None
+    new_attrs = []
+    for var in domain.attributes:
+        if var.name == class_name:
+            class_var = var
+        else:
+            new_attrs.append(var)
+    if class_var is None:
+        return domain
+    return Domain(new_attrs, class_var, metas=domain.metas)
+
+
+class _ListDatasetsWorker(QObject):
+    """Read the metadata table on a background thread so the canvas stays
+    responsive while we wait for the round-trip."""
+
+    finished = pyqtSignal(list)
+    failed = pyqtSignal(str)
+
+    def __init__(self, dialect, connection_params):
+        super().__init__()
+        self.dialect = dialect
+        self.connection_params = connection_params
+
+    _TABLE_MISSING_MARKERS = (
+        "doesn't exist", "does not exist", "no such table",
+        "unknown table", "relation", "1146",
+    )
+
+    def run(self):
+        engine = None
+        try:
+            _, _, text, _ = _sqlalchemy_modules()
+            engine = _create_sqlalchemy_engine(
+                self.dialect, **self.connection_params
+            )
+            qi = self.dialect.quote_ident
+            query = (
+                f"SELECT {qi('name')}, {qi('datetime')}, {qi('rows')}, "
+                f"{qi('cols')}, {qi('class')}, {qi('class_name')} "
+                f"FROM {qi('datasets')} "
+                f"ORDER BY {qi('datetime')} DESC"
+            )
+            with engine.begin() as connection:
+                result = connection.execute(text(query))
+                datasets = [dict(row) for row in result.mappings()]
+            self.finished.emit(datasets)
+        except Exception as ex:  # pylint: disable=broad-except
+            msg = str(ex).lower()
+            if any(m in msg for m in self._TABLE_MISSING_MARKERS):
+                self.finished.emit([])
+            else:
+                self.failed.emit(str(ex))
+        finally:
+            if engine is not None:
+                engine.dispose()
+
+
+class _LoadTableWorker(QObject):
+    """Pull a dataset into a ``pandas.DataFrame`` on a background thread."""
+
+    finished = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, dialect, connection_params, table_name):
+        super().__init__()
+        self.dialect = dialect
+        self.connection_params = connection_params
+        self.table_name = table_name
+
+    def run(self):
+        import pandas as pd
+        engine = None
+        try:
+            _, _, text, _ = _sqlalchemy_modules()
+            engine = _create_sqlalchemy_engine(
+                self.dialect, **self.connection_params
+            )
+            qi = self.dialect.quote_ident
+            with engine.begin() as connection:
+                frame = pd.read_sql(
+                    text(f"SELECT * FROM {qi(self.table_name)}"),
+                    connection,
+                )
+            self.finished.emit(frame)
+        except Exception as ex:  # pylint: disable=broad-except
+            self.failed.emit(str(ex))
+        finally:
+            if engine is not None:
+                engine.dispose()
+
+
+class owloadfromdb(OWBaseSql, OWWidget):
+    name = "Load from DB"
+    description = (
+        "Load a dataset previously persisted by Save to DB, optionally "
+        "marking the class column directly."
+    )
+    icon = "icons/loaddatadb.svg"
+    priority = 2242
+    keywords = (
+        "sql table, load, read, fetch, data, db, dataset, postgres, "
+        "postgresql, mysql"
+    )
+
+    class Inputs:
+        pass
+
+    class Outputs:
+        data = Output("Data", Orange.data.Table)
+
+    settings_version = 1
+    buttons_area_orientation = None
+    selected_backend = Setting("PostgreSQL")
+    sql = Setting("")
+    # Persisted across workflow save/load so a reopen restores the user's
+    # last choice as soon as the connection comes back up.
+    selected_dataset = Setting("", schema_only=True)
+    selected_class = Setting("", schema_only=True)
+
+    class Warning(OWBaseSql.Warning):
+        no_datasets = Msg(
+            "No datasets found. Use the 'Save to DB' node to save "
+            "data first — it will create the required tables automatically."
+        )
+
+    class Error(OWBaseSql.Error):
+        no_backends = Msg("Please install a backend to use this widget.")
+
+    def __init__(self):
+        self.backendcombo = None
+        self.connection_status_label = None
+        self.datasets_combo = None
+        self.class_combo = None
+        self.dataset_info_label = None
+        self.btn_loaddata = None
+        self.data = None
+        self._busy = False
+        self._available = {}
+        self._thread = None
+        self._worker = None
+        super().__init__()
+
+    # ------------------------------------------------------------------ #
+    #  Dialect & connection
+    # ------------------------------------------------------------------ #
+    @property
+    def dialect(self):
+        return _DIALECTS.get(self.selected_backend, _DIALECTS["PostgreSQL"])
+
+    def _setup_gui(self):
+        super()._setup_gui()
+        self._add_backend_controls()
+        self._add_connection_status()
+        self._add_dataset_controls()
+
+    def _add_backend_controls(self):
+        box = self.serverbox
+        self.backendcombo = QComboBox(box)
+        for name in _DIALECTS:
+            self.backendcombo.addItem(name)
+        if self.selected_backend in _DIALECTS:
+            self.backendcombo.setCurrentText(self.selected_backend)
+        else:
+            self.selected_backend = "PostgreSQL"
+            self.backendcombo.setCurrentText("PostgreSQL")
+        self.backendcombo.currentTextChanged.connect(self._on_backend_changed)
+        box.layout().insertWidget(0, self.backendcombo)
+
+    def _add_connection_status(self):
+        self.connection_status_label = QLabel()
+        self.connection_status_label.setWordWrap(True)
+        self.serverbox.layout().addWidget(self.connection_status_label)
+        self._set_connection_status("Not connected", "neutral")
+
+    def _add_dataset_controls(self):
+        layout = QGridLayout()
+        layout.setSpacing(3)
+        gui.widgetBox(self.controlArea, orientation=layout, box="Dataset")
+
+        layout.addWidget(QLabel("Dataset:"), 0, 0)
+        self.datasets_combo = QComboBox()
+        self.datasets_combo.setEnabled(False)
+        self.datasets_combo.currentTextChanged.connect(self._on_dataset_changed)
+        layout.addWidget(self.datasets_combo, 0, 1)
+
+        self.dataset_info_label = QLabel(
+            "Connect to a database to list available datasets."
+        )
+        self.dataset_info_label.setWordWrap(True)
+        layout.addWidget(self.dataset_info_label, 1, 0, 1, 2)
+
+        layout.addWidget(QLabel("Class column:"), 2, 0)
+        self.class_combo = QComboBox()
+        self.class_combo.setEnabled(False)
+        self.class_combo.addItem(_NO_CLASS_LABEL)
+        self.class_combo.currentTextChanged.connect(self._on_class_changed)
+        layout.addWidget(self.class_combo, 2, 1)
+
+        self.btn_loaddata = QPushButton(
+            "Load",
+            toolTip="Load the selected dataset into Orange.",
+            minimumWidth=120,
+        )
+        self.btn_loaddata.clicked.connect(self.load_data)
+        self.btn_loaddata.setEnabled(False)
+        layout.addWidget(self.btn_loaddata, 3, 1)
+
+    def _set_connection_status(self, message, state="neutral"):
+        if self.connection_status_label is None:
+            return
+        self.connection_status_label.setText(message)
+        self.connection_status_label.setStyleSheet(
+            CONNECTION_STATUS_STYLES.get(
+                state, CONNECTION_STATUS_STYLES["neutral"]
+            )
+        )
+
+    def _on_backend_changed(self):
+        if self._busy:
+            return
+        self.selected_backend = self.backendcombo.currentText()
+        self.backend = None
+        self._reset_dataset_controls()
+        self._set_connection_status("Not connected", "neutral")
+
+    def _reset_dataset_controls(self):
+        self.datasets_combo.blockSignals(True)
+        self.datasets_combo.clear()
+        self.datasets_combo.blockSignals(False)
+        self.datasets_combo.setEnabled(False)
+
+        self.class_combo.blockSignals(True)
+        self.class_combo.clear()
+        self.class_combo.addItem(_NO_CLASS_LABEL)
+        self.class_combo.blockSignals(False)
+        self.class_combo.setEnabled(False)
+
+        self.btn_loaddata.setEnabled(False)
+        self.dataset_info_label.setText(
+            "Connect to a database to list available datasets."
+        )
+        self._available = {}
+
+    def _connection_params(self):
+        return {
+            "host": self.host,
+            "port": self.port,
+            "database": self.database,
+            "username": self.username,
+            "password": self.password,
+        }
+
+    def connect(self):
+        if self._busy:
+            return
+        self.backend = None
+        self._reset_dataset_controls()
+        self._set_connection_status("Connecting...", "neutral")
+        super().connect()
+        if self.backend is None and not self.Error.connection.is_shown():
+            self._set_connection_status("Not connected", "neutral")
+
+    def get_backend(self):
+        """``OWBaseSql.connect`` calls this to obtain a class-like factory
+        accepting ``(host, port, database, user, password)``."""
+        factory = self.dialect.backend_factory()
+        if factory is None:
+            self.Error.no_backends()
+            return None
+        return factory
+
+    def on_connection_success(self):
+        super().on_connection_success()
+        port = f":{self.port}" if self.port else ""
+        self._set_connection_status(
+            f"Connected to {self.selected_backend}: "
+            f"{self.host}{port}/{self.database}",
+            "success",
+        )
+        self._populate_datasets()
+
+    def on_connection_error(self, err):
+        super().on_connection_error(err)
+        message = str(err).split("\n")[0]
+        self._set_connection_status(f"Connection failed: {message}", "error")
+
+    # ------------------------------------------------------------------ #
+    #  Dataset listing
+    # ------------------------------------------------------------------ #
+    def _populate_datasets(self):
+        self.Warning.no_datasets.clear()
+        self._set_connection_status("Listing datasets...", "neutral")
+        self._busy = True
+
+        self._thread = QThread(self)
+        self._worker = _ListDatasetsWorker(
+            dialect=self.dialect,
+            connection_params=self._connection_params(),
+        )
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.finished.connect(self._on_datasets_loaded)
+        self._worker.failed.connect(self._on_datasets_failed)
+        self._worker.finished.connect(lambda _: self._thread.quit())
+        self._worker.failed.connect(lambda _: self._thread.quit())
+        self._thread.finished.connect(self._worker.deleteLater)
+        self._thread.finished.connect(self._thread.deleteLater)
+        self._thread.finished.connect(self._on_thread_finished)
+        self._thread.start()
+
+    def _on_datasets_loaded(self, datasets):
+        self._busy = False
+        self._available = {ds["name"]: ds for ds in datasets}
+
+        self.datasets_combo.blockSignals(True)
+        self.datasets_combo.clear()
+        for ds in datasets:
+            self.datasets_combo.addItem(ds["name"])
+        self.datasets_combo.blockSignals(False)
+
+        if not datasets:
+            self.Warning.no_datasets()
+            self.datasets_combo.setEnabled(False)
+            self._set_connection_status(
+                f"Connected to {self.selected_backend} — no datasets found",
+                "neutral",
+            )
+            return
+
+        self.datasets_combo.setEnabled(True)
+        names = [ds["name"] for ds in datasets]
+        if self.selected_dataset in names:
+            self.datasets_combo.setCurrentText(self.selected_dataset)
+        else:
+            self.datasets_combo.setCurrentIndex(0)
+            self.selected_dataset = names[0]
+
+        # Force a refresh in case the current text didn't change.
+        self._on_dataset_changed(self.datasets_combo.currentText())
+        port = f":{self.port}" if self.port else ""
+        plural = "s" if len(datasets) != 1 else ""
+        self._set_connection_status(
+            f"Connected to {self.selected_backend}: "
+            f"{self.host}{port}/{self.database} "
+            f"({len(datasets)} dataset{plural})",
+            "success",
+        )
+
+    def _on_datasets_failed(self, message):
+        self._busy = False
+        self._set_connection_status(
+            f"Failed to list datasets: {message}", "error"
+        )
+        self.Error.connection(message)
+
+    def _on_thread_finished(self):
+        self._thread = None
+        self._worker = None
+
+    # ------------------------------------------------------------------ #
+    #  Per-dataset reaction
+    # ------------------------------------------------------------------ #
+    def _on_dataset_changed(self, name):
+        self.selected_dataset = name
+        if not name or name not in self._available:
+            self.class_combo.setEnabled(False)
+            self.btn_loaddata.setEnabled(False)
+            self.dataset_info_label.setText("(no dataset selected)")
+            return
+
+        ds = self._available[name]
+        info = (
+            f"<b>{name}</b><br>"
+            f"Saved: {ds['datetime']}<br>"
+            f"{ds['rows']} rows · {ds['cols']} columns"
+        )
+        if ds.get("class_name"):
+            info += f"<br>Original class: <code>{ds['class_name']}</code>"
+            if ds.get("class"):
+                info += f" ({ds['class']})"
+        self.dataset_info_label.setText(info)
+
+        # ``SELECT ... LIMIT 0`` is cheap (server only sends the column
+        # header back) so it's fine to run synchronously here.
+        try:
+            _, _, text, _ = _sqlalchemy_modules()
+            engine = _create_sqlalchemy_engine(
+                self.dialect, **self._connection_params()
+            )
+            qi = self.dialect.quote_ident
+            with engine.begin() as connection:
+                result = connection.execute(
+                    text(f"SELECT * FROM {qi(name)} LIMIT 0")
+                )
+                columns = list(result.keys())
+            engine.dispose()
+        except Exception as ex:  # pylint: disable=broad-except
+            self.Error.connection(str(ex))
+            return
+
+        self.class_combo.blockSignals(True)
+        self.class_combo.clear()
+        self.class_combo.addItem(_NO_CLASS_LABEL)
+        for col in columns:
+            self.class_combo.addItem(col)
+        self.class_combo.blockSignals(False)
+        self.class_combo.setEnabled(True)
+
+        # Pick the default: persisted choice → metadata's class_name → none.
+        chosen = ""
+        if self.selected_class and self.selected_class in columns:
+            chosen = self.selected_class
+        elif ds.get("class_name") and ds["class_name"] in columns:
+            chosen = ds["class_name"]
+
+        self.class_combo.setCurrentText(chosen or _NO_CLASS_LABEL)
+        self.selected_class = chosen
+
+        self.btn_loaddata.setEnabled(True)
+
+    def _on_class_changed(self, text):
+        if text == _NO_CLASS_LABEL:
+            self.selected_class = ""
+        else:
+            self.selected_class = text
+
+    # ------------------------------------------------------------------ #
+    #  Loading
+    # ------------------------------------------------------------------ #
+    def load_data(self):
+        if self._busy or not self.selected_dataset:
+            return
+
+        self.Error.connection.clear()
+        self._busy = True
+        self._set_load_controls_enabled(False)
+        self.progressBarInit()
+        self.progressBarSet(10)
+        self._set_connection_status(
+            f"Loading {self.selected_dataset}...", "neutral"
+        )
+
+        self._thread = QThread(self)
+        self._worker = _LoadTableWorker(
+            dialect=self.dialect,
+            connection_params=self._connection_params(),
+            table_name=self.selected_dataset,
+        )
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.finished.connect(self._on_table_loaded)
+        self._worker.failed.connect(self._on_table_failed)
+        self._worker.finished.connect(lambda *_: self._thread.quit())
+        self._worker.failed.connect(lambda *_: self._thread.quit())
+        self._thread.finished.connect(self._worker.deleteLater)
+        self._thread.finished.connect(self._thread.deleteLater)
+        self._thread.finished.connect(self._on_thread_finished)
+        self._thread.start()
+
+    def _on_table_loaded(self, frame):
+        self.progressBarSet(70)
+        try:
+            table = pc.table_from_frame(frame)
+            class_name = self.selected_class
+            if class_name:
+                new_domain = _build_domain_with_class(table.domain, class_name)
+                if new_domain is not table.domain:
+                    table = table.transform(new_domain)
+        except Exception as ex:  # pylint: disable=broad-except
+            self._on_table_failed(str(ex))
+            return
+
+        self.Outputs.data.send(table)
+        self.progressBarSet(100)
+        self.progressBarFinished()
+        self._busy = False
+        self._set_load_controls_enabled(True)
+        self._set_connection_status(
+            f"Loaded {self.selected_dataset} ({len(table)} rows)",
+            "success",
+        )
+
+    def _on_table_failed(self, message):
+        self.progressBarFinished()
+        self._busy = False
+        self._set_load_controls_enabled(True)
+        self.Error.connection(message)
+        self._set_connection_status(f"Load failed: {message}", "error")
+        self.Outputs.data.send(None)
+
+    def _set_load_controls_enabled(self, enabled):
+        for widget in (
+            self.connectbutton, self.btn_loaddata, self.backendcombo,
+            self.servertext, self.databasetext, self.usernametext,
+            self.passwordtext, self.datasets_combo, self.class_combo,
+        ):
+            if widget is not None:
+                widget.setEnabled(enabled)
+
+    def onDeleteWidget(self):
+        if self._thread is not None and self._thread.isRunning():
+            self._thread.quit()
+            self._thread.wait()
+        super().onDeleteWidget()
+
+    def clear(self):
+        self.Error.connection.clear()
+
+
+if __name__ == "__main__":  # pragma: no cover
+    WidgetPreview(owloadfromdb).run()

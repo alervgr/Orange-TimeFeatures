@@ -2,9 +2,9 @@ TimeFeatures
 ============
 
 |addon| is an `Orange3 <https://orangedatamining.com/>`_ add-on for
-time-series feature engineering. It ships three widgets that work
-together to define, visualise and persist derived variables built on
-top of an existing dataset.
+time-series feature engineering. It ships four widgets that work
+together to define, visualise, persist and re-load derived variables
+built on top of an existing dataset.
 
 .. list-table::
    :header-rows: 1
@@ -21,9 +21,13 @@ top of an existing dataset.
        resulting variable / expression table. Edge weights summarise
        how far back or forward in time each variable looks.
    * - :doc:`widgets/save-to-db`
-     - Persists the resulting dataset to a SQL database (PostgreSQL),
-       with full SQL-injection defences and an optional completion
-       email.
+     - Persists the resulting dataset to a SQL database (PostgreSQL
+       or MySQL), with full SQL-injection defences and an optional
+       completion email.
+   * - :doc:`widgets/load-from-db`
+     - Lists the datasets previously stored by Save to DB and pulls
+       the chosen one back into Orange, optionally marking the class
+       column directly so no Select Columns widget is needed.
 
 .. _workflow:
 
@@ -64,6 +68,7 @@ Widgets
    widgets/time-feature-constructor
    widgets/variable-dependency-graph
    widgets/save-to-db
+   widgets/load-from-db
 
 Project
 -------

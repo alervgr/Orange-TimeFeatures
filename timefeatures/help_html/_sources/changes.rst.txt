@@ -4,6 +4,25 @@ Changelog
 Unreleased
 ----------
 
+**Load from DB (new widget)**
+
+- Lists every dataset registered in the ``datasets`` metadata table
+  via SQLAlchemy and pulls the selected one back into Orange as an
+  ``Orange.data.Table`` using ``pandas.read_sql`` +
+  ``Orange.data.pandas_compat.table_from_frame``.
+- Offers a Class column combo populated from the dataset's columns,
+  pre-selected with the user's persisted choice or the ``class_name``
+  recorded by Save to DB. The output ``Table`` already exposes the
+  chosen column as ``domain.class_var``, so no Select Columns widget
+  is needed downstream.
+- Same dialect selector (PostgreSQL / MySQL), connection-status
+  label and ``QThread`` worker pattern as Save to DB. Both the
+  metadata listing and the actual table read happen off the GUI
+  thread.
+- Workflow-persisted settings: ``selected_dataset`` and
+  ``selected_class`` are ``Setting(..., schema_only=True)``, restored
+  as soon as the connection comes back up on reload.
+
 **Variable Dependency Graph**
 
 - *New:* edges now carry **numeric weights** equal to the largest
@@ -50,11 +69,25 @@ Unreleased
 **Save to DB**
 
 - *New:* **MySQL support**. The connection panel now exposes a
-  database-type selector (PostgreSQL / MySQL). MySQL is reached
-  through a lightweight ``pymysql`` wrapper that mimics Orange's
-  Backend interface, so the rest of the widget code is unchanged.
-  Per-dialect column types and identifier quoting (``"name"`` vs
-  ``\`name\```) are encapsulated in a ``_Dialect`` abstraction.
+  database-type selector (PostgreSQL / MySQL). Per-dialect column
+  types and identifier quoting (``"name"`` vs ``\`name\```) live in
+  a ``_Dialect`` abstraction.
+- *Performance:* uploads now go through
+  ``Orange.data.pandas_compat.table_to_frame`` +
+  ``DataFrame.to_sql(method='multi', chunksize=1000)`` over a
+  SQLAlchemy engine. The old row-per-INSERT loop is gone — typical
+  speedups are 50-100×, especially over the network. Identifier
+  quoting and per-column DDL types are emitted by the SQLAlchemy
+  dialect (``DOUBLE_PRECISION`` on PostgreSQL, ``DOUBLE`` on MySQL,
+  ``DATETIME`` instead of ``TIMESTAMP`` on MySQL to dodge the 2038
+  cap, ``VARCHAR(255)`` / ``TEXT`` everywhere else).
+- *UX:* the upload runs in a background ``QThread`` (``_UploadWorker``),
+  so the canvas stays interactive on long writes. A status label under
+  the connection box reports *Not connected* / *Connected to … : …* /
+  *Uploading rows N/M…* / *Upload completed in Xs* / *Upload failed:
+  …* with colour cues. **Save**, **Connect** and the form fields are
+  disabled while the worker runs and re-enabled on success or
+  failure; the widget aborts the thread cleanly on close.
 - *Fixed (critical):* SQL injection in the metadata ``INSERT``. The
   query is now fully parametrised.
 - Added an identifier whitelist

@@ -14,7 +14,7 @@
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Changelog" href="../changes.html" />
+    <link rel="next" title="Load from DB" href="load-from-db.html" />
     <link rel="prev" title="Variable Dependency Graph" href="variable-dependency-graph.html" />
    
   <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
@@ -63,6 +63,7 @@
 <li class="toctree-l1"><a class="reference internal" href="time-feature-constructor.html">Time Features Constructor</a></li>
 <li class="toctree-l1"><a class="reference internal" href="variable-dependency-graph.html">Variable Dependency Graph</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Save to DB</a></li>
+<li class="toctree-l1"><a class="reference internal" href="load-from-db.html">Load from DB</a></li>
 </ul>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../changes.html">Changelog</a></li>
@@ -73,7 +74,7 @@
 <ul>
   <li><a href="../index.html">Documentation overview</a><ul>
       <li>Previous: <a href="variable-dependency-graph.html" title="previous chapter">Variable Dependency Graph</a></li>
-      <li>Next: <a href="../changes.html" title="next chapter">Changelog</a></li>
+      <li>Next: <a href="load-from-db.html" title="next chapter">Load from DB</a></li>
   </ul></li>
 </ul>
 </div>
@@ -96,16 +97,17 @@
   <section id="save-to-db">
 <h1>Save to DB<a class="headerlink" href="#save-to-db" title="Link to this heading">¶</a></h1>
 <p>The <strong>Save to DB</strong> widget persists an Orange data table to a SQL
-database. It supports two dialects out of the box:</p>
+database. Two dialects are supported out of the box:</p>
 <ul class="simple">
-<li><p><strong>PostgreSQL</strong> — via Orange’s built-in SQL backend layer
-(<code class="docutils literal notranslate"><span class="pre">psycopg2</span></code>).</p></li>
-<li><p><strong>MySQL</strong> — via a lightweight <code class="docutils literal notranslate"><span class="pre">pymysql</span></code> wrapper shipped with
-TimeFeatures.</p></li>
+<li><p><strong>PostgreSQL</strong> — through <code class="docutils literal notranslate"><span class="pre">psycopg2</span></code>.</p></li>
+<li><p><strong>MySQL</strong> — through <code class="docutils literal notranslate"><span class="pre">pymysql</span></code>.</p></li>
 </ul>
-<p>The dialect is selected with the top combo box of the connection
-panel; the same host / port / database / user / password fields apply
-to both.</p>
+<p>Both drivers are reached via <strong>SQLAlchemy</strong>, which keeps the SQL
+generation, identifier quoting and type rendering dialect-agnostic. The
+actual upload uses a <a class="reference external" href="https://pandas.pydata.org/">pandas</a> DataFrame
+and <code class="docutils literal notranslate"><span class="pre">DataFrame.to_sql</span></code> with <code class="docutils literal notranslate"><span class="pre">method='multi'</span></code> and chunked writes, so
+a 100 000-row dataset finishes in seconds even on remote hosts (the
+previous row-by-row INSERT would have taken minutes).</p>
 <section id="inputs">
 <h2>Inputs<a class="headerlink" href="#inputs" title="Link to this heading">¶</a></h2>
 <table class="docutils align-default">
@@ -132,7 +134,7 @@ to both.</p>
 <p>The widget shows the detected target type, row count and column count
 of the input. Connection fields (host, port, database, user, password)
 come from Orange’s SQL base widget.</p>
-<p>TimeFeatures-specific fields:</p>
+<p>TimeFeatures-specific controls:</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Field</p></th>
@@ -142,28 +144,60 @@ come from Orange’s SQL base widget.</p>
 <tbody>
 <tr class="row-even"><td><p>Database type</p></td>
 <td><p>Combo box at the top of the connection box. Pick <strong>PostgreSQL</strong>
-or <strong>MySQL</strong>.</p></td>
+or <strong>MySQL</strong>. The connection driver and column types adapt
+automatically.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Table name</p></td>
+<tr class="row-odd"><td><p>Connection status</p></td>
+<td><p>Small label under the connection box. Shows three states:
+neutral (“Not connected”, “Connecting…”, “Uploading rows 3/10…”),
+success (“Connected to PostgreSQL: host/db”, “Upload completed
+in 4.2s”), error (“Connection failed: …”, “Upload failed: …”).</p></td>
+</tr>
+<tr class="row-even"><td><p>Table name</p></td>
 <td><p>Destination table name. Validated against PostgreSQL identifier
 rules (see <em>Validation</em> below); MySQL accepts a superset, so
 the same rule is safe on both.</p></td>
 </tr>
-<tr class="row-even"><td><p>Email</p></td>
+<tr class="row-odd"><td><p>Email</p></td>
 <td><p>Optional notification address. A summary email is sent once the
 upload finishes, including the table name, row / column counts,
 and elapsed time.</p></td>
 </tr>
 </tbody>
 </table>
-<p>Clicking <strong>Save</strong> creates (if missing) a metadata table named
-<code class="docutils literal notranslate"><span class="pre">datasets</span></code> and then the destination table, and finally inserts every
-row of the input.</p>
+</section>
+<section id="how-it-works">
+<h2>How it Works<a class="headerlink" href="#how-it-works" title="Link to this heading">¶</a></h2>
+<p>When <strong>Save</strong> is clicked, the widget:</p>
+<ol class="arabic simple">
+<li><p>Validates the table name and the form (host, database, optional
+email).</p></li>
+<li><p>Builds a SQLAlchemy URL from the form fields and the active dialect
+driver (<code class="docutils literal notranslate"><span class="pre">postgresql+psycopg2://…</span></code> or <code class="docutils literal notranslate"><span class="pre">mysql+pymysql://…</span></code>).</p></li>
+<li><p>Spawns a background <code class="docutils literal notranslate"><span class="pre">QThread</span></code> running an <code class="docutils literal notranslate"><span class="pre">_UploadWorker</span></code>, so the
+Orange canvas stays responsive even during long uploads.</p></li>
+<li><p>The worker:</p>
+<ul class="simple">
+<li><p>converts the dataset to a pandas DataFrame with
+<code class="docutils literal notranslate"><span class="pre">Orange.data.pandas_compat.table_to_frame(include_metas=True)</span></code>
+and reorders the columns (class first, then metas in domain order,
+then attributes) to match the existing schema convention;</p></li>
+<li><p>creates the <code class="docutils literal notranslate"><span class="pre">datasets</span></code> metadata table if it doesn’t exist;</p></li>
+<li><p>inserts one row into <code class="docutils literal notranslate"><span class="pre">datasets</span></code> describing this upload;</p></li>
+<li><p>writes the dataset itself in <code class="docutils literal notranslate"><span class="pre">PANDAS_SQL_CHUNKSIZE</span></code> chunks
+(default <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">000</span></code>) via <code class="docutils literal notranslate"><span class="pre">df.to_sql(...,</span> <span class="pre">method='multi')</span></code>.</p></li>
+</ul>
+</li>
+</ol>
+<p>While the worker runs, the widget’s progress bar and status label are
+updated through Qt signals; the <strong>Save</strong>, <strong>Connect</strong> and form controls
+are temporarily disabled.</p>
 </section>
 <section id="type-mapping">
 <h2>Type Mapping<a class="headerlink" href="#type-mapping" title="Link to this heading">¶</a></h2>
-<p>Column types are picked per dialect so the table works on either
-backend without truncation surprises:</p>
+<p>Column types are picked per dialect through SQLAlchemy so the DDL is
+correct on either backend. The widget uses the dialect-specific
+<code class="docutils literal notranslate"><span class="pre">DOUBLE_PRECISION</span></code> / <code class="docutils literal notranslate"><span class="pre">DOUBLE</span></code> whenever available:</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Orange Variable</p></th>
@@ -190,37 +224,41 @@ backend without truncation surprises:</p>
 </tr>
 </tbody>
 </table>
-<p>Identifiers (table and column names) are quoted with the dialect’s
-native syntax — <code class="docutils literal notranslate"><span class="pre">&quot;name&quot;</span></code> on PostgreSQL, <code class="docutils literal notranslate"><span class="pre">\`name\`</span></code> on MySQL — and
-any internal occurrence of the quote character is doubled to avoid
-breakouts.</p>
+<p>Identifiers (table and column names) are quoted by SQLAlchemy with the
+dialect’s native syntax — <code class="docutils literal notranslate"><span class="pre">&quot;name&quot;</span></code> on PostgreSQL,
+<code class="docutils literal notranslate"><span class="pre">\`name\`</span></code> on MySQL — and any internal occurrence of the quote
+character is doubled to avoid breakouts.</p>
 </section>
 <section id="validation">
 <h2>Validation<a class="headerlink" href="#validation" title="Link to this heading">¶</a></h2>
 <p>Before touching the database the widget enforces:</p>
 <ul class="simple">
+<li><p><strong>Connection established</strong> — a successful <strong>Connect</strong> is required;
+if you click <strong>Save</strong> before connecting, the widget refuses with
+<em>Connect to a database before saving.</em></p></li>
 <li><p><strong>Table name present</strong> — required.</p></li>
 <li><p><strong>Table name well-formed</strong> — must match
 <code class="docutils literal notranslate"><span class="pre">^[A-Za-z_][A-Za-z0-9_]{0,62}$</span></code> (PostgreSQL identifier rules:
 starts with a letter or underscore, only letters / digits /
-underscores, max 63 characters).</p></li>
+underscores, max 63 characters). MySQL accepts a superset.</p></li>
 <li><p><strong>Connection fields present</strong> — host and database.</p></li>
 <li><p><strong>Email well-formed</strong> — only when the optional field is filled.</p></li>
 </ul>
 </section>
 <section id="security">
 <h2>Security<a class="headerlink" href="#security" title="Link to this heading">¶</a></h2>
-<p>The widget defends against SQL injection at two layers:</p>
+<p>The widget defends against SQL injection at three layers:</p>
 <ul class="simple">
 <li><p><strong>Parametrised queries</strong> — every value inserted into the database
-uses parameter binding (<code class="docutils literal notranslate"><span class="pre">execute_sql_query(query,</span> <span class="pre">params=...)</span></code>).
-Row contents and metadata values are never concatenated into the SQL
-string.</p></li>
-<li><p><strong>Identifier escaping</strong> — table names and column names that appear
-in DDL (<code class="docutils literal notranslate"><span class="pre">CREATE</span> <span class="pre">TABLE</span></code> / <code class="docutils literal notranslate"><span class="pre">INSERT</span> <span class="pre">INTO</span></code>) are wrapped with
-PostgreSQL’s standard quoted-identifier syntax (<code class="docutils literal notranslate"><span class="pre">&quot;name&quot;</span></code> with any
-internal <code class="docutils literal notranslate"><span class="pre">&quot;</span></code> doubled). The whitelist regex above further blocks
-payloads from ever reaching the escape step.</p></li>
+goes through SQLAlchemy parameter binding
+(<code class="docutils literal notranslate"><span class="pre">connection.execute(text(...),</span> <span class="pre">params)</span></code> for the metadata row,
+<code class="docutils literal notranslate"><span class="pre">DataFrame.to_sql</span></code> for the data). Values are never concatenated
+into the SQL string.</p></li>
+<li><p><strong>Identifier escaping</strong> — table and column identifiers are rendered
+by the SQLAlchemy dialect, which double-escapes the quote character
+per spec (<code class="docutils literal notranslate"><span class="pre">&quot;</span></code> on PostgreSQL, <code class="docutils literal notranslate"><span class="pre">\`</span></code> on MySQL).</p></li>
+<li><p><strong>Whitelist on the table name</strong> — the regex above further blocks
+payloads from ever reaching the DDL stage.</p></li>
 </ul>
 </section>
 <section id="usage-example">
@@ -228,27 +266,29 @@ payloads from ever reaching the escape step.</p></li>
 <ol class="arabic simple">
 <li><p>Connect a <strong>File</strong> widget (or any data-producing widget) to <strong>Save
 to DB</strong>.</p></li>
-<li><p>Fill in the database connection details (host, database, username,
-password).</p></li>
+<li><p>Choose <strong>PostgreSQL</strong> or <strong>MySQL</strong> in the Database type combo.</p></li>
+<li><p>Fill in the connection fields (host, database, username, password).</p></li>
+<li><p>Click <strong>Connect</strong>. The status label should turn green with the
+connection details.</p></li>
 <li><p>Enter a valid table name, e.g. <code class="docutils literal notranslate"><span class="pre">my_time_series_data</span></code>.</p></li>
 <li><p><em>(Optional)</em> Enter an email for the completion notification.</p></li>
-<li><p>Click <strong>Save</strong>. The widget shows a progress bar while inserting and
-reports any backend error.</p></li>
+<li><p>Click <strong>Save</strong>. Watch the progress bar advance through the chunks
+and the status label switch to <em>Upload completed in Xs</em> when done.</p></li>
 </ol>
 </section>
 <section id="requirements">
 <h2>Requirements<a class="headerlink" href="#requirements" title="Link to this heading">¶</a></h2>
-<p>Both database drivers ship as part of TimeFeatures’s install:</p>
-<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>psycopg2-binary&gt;=2.9.9   # PostgreSQL
-PyMySQL&gt;=1.0.0           # MySQL
+<p>The widget brings the database drivers and the SQL toolkit:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>SQLAlchemy&gt;=1.4.0       # dialect-agnostic SQL toolkit
+psycopg2-binary&gt;=2.9.9  # PostgreSQL driver
+PyMySQL&gt;=1.0.0          # MySQL driver
 </pre></div>
 </div>
 <p><code class="docutils literal notranslate"><span class="pre">psycopg2-binary</span></code> is the binary distribution, so the widget runs on
 macOS, Linux and Windows without a C compiler or the <code class="docutils literal notranslate"><span class="pre">libpq</span></code>
 development headers. <code class="docutils literal notranslate"><span class="pre">PyMySQL</span></code> is pure Python and has no native
-build step. For production deployments you may swap either driver for
-its source-distribution counterpart (<code class="docutils literal notranslate"><span class="pre">psycopg2</span></code> or <code class="docutils literal notranslate"><span class="pre">mysqlclient</span></code>)
-in your environment.</p>
+build step. <code class="docutils literal notranslate"><span class="pre">pandas</span></code> itself is already a transitive dependency of
+Orange3.</p>
 </section>
 </section>
 
