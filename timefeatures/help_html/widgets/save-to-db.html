@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Save to DB &#8212; TimeFeatures documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=686e5160" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=27fed22d" />
+    <script src="../_static/documentation_options.js?v=14ed45bf"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="prev" title="Variable Dependency Graph" href="variable-dependency-graph.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="save-to-db">
+<h1>Save to DB<a class="headerlink" href="#save-to-db" title="Link to this heading">¶</a></h1>
+<p>Saves an Orange data table into a SQL database supported by Orange’s SQL
+backend layer.</p>
+<section id="inputs">
+<h2>Inputs<a class="headerlink" href="#inputs" title="Link to this heading">¶</a></h2>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Signal</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Data</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Orange.data.Table</span></code></p></td>
+<td><p>Dataset to upload.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="outputs">
+<h2>Outputs<a class="headerlink" href="#outputs" title="Link to this heading">¶</a></h2>
+<p>This widget has no output signals.</p>
+</section>
+<section id="controls">
+<h2>Controls<a class="headerlink" href="#controls" title="Link to this heading">¶</a></h2>
+<p>The widget shows the detected class type, row count and column count for
+the input table. Connection fields are inherited from Orange’s SQL base
+widget. The TimeFeatures-specific fields are:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Table name</p></td>
+<td><p>Destination table name. It must start with a letter or underscore and
+contain only letters, digits and underscores, up to 63 characters.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Email</p></td>
+<td><p>Optional notification address used after a successful upload.</p></td>
+</tr>
+</tbody>
+</table>
+<p><code class="docutils literal notranslate"><span class="pre">Save</span></code> creates or updates the metadata table named <code class="docutils literal notranslate"><span class="pre">datasets</span></code> and then
+creates the destination table for the uploaded data.</p>
+</section>
+<section id="database-behavior">
+<h2>Database Behavior<a class="headerlink" href="#database-behavior" title="Link to this heading">¶</a></h2>
+<p>The widget maps Orange variable types to SQL column types:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Orange Variable</p></th>
+<th class="head"><p>SQL Type</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">DiscreteVariable</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">VARCHAR</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ContinuousVariable</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">FLOAT(10)</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">TimeVariable</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">TIMESTAMP</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">StringVariable</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">VARCHAR</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="validation">
+<h2>Validation<a class="headerlink" href="#validation" title="Link to this heading">¶</a></h2>
+<p>Before saving, the widget checks that a table name is present, that the
+table name is SQL-safe, that host and database fields are present, and that
+the optional email field has a valid email format.</p>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">TimeFeatures</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="time-feature-constructor.html">Time Features Constructor</a></li>
+<li class="toctree-l1"><a class="reference internal" href="variable-dependency-graph.html">Variable Dependency Graph</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Save to DB</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="variable-dependency-graph.html" title="previous chapter">Variable Dependency Graph</a></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2026, Alejandro Rivas Garcia.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.1.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="../_sources/widgets/save-to-db.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

@@ -48,6 +48,8 @@ coverage.xml
 
 # Sphinx documentation
 .spyproject/
+docs/build/
+timefeatures/help_html/.doctrees/
 
 # intellij configs
 .idea/

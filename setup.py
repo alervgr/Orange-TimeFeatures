@@ -16,17 +16,29 @@ CLASSIFIERS = [
 ]
 
 setup(name="TimeFeatures",
-      packages=["timefeatures.widgets"],
+      packages=["timefeatures", "timefeatures.widgets"],
+      include_package_data=True,
       package_data={"timefeatures.widgets": ["icons/*.svg", "icons/*.png"]},
-      entry_points={"orange.widgets": "Time-Features = timefeatures.widgets"},
+      entry_points={
+          "orange.widgets": "Time-Features = timefeatures.widgets",
+          "orange.canvas.help": (
+              "html-index = timefeatures.help:WIDGET_HELP_PATH"
+          ),
+      },
       install_requires=[
           "numpy>=1.22.4",
           "AnyQt>=0.2.0",
           "PyQt5>=5.15.6",
+          "PyQtWebEngine>=5.15.6",
           "scipy>=1.7.3",
           "psycopg2-binary>=2.9.9",
           "Orange3-Network>=1.8.0",
       ],
+      extras_require={
+          "docs": [
+              "Sphinx>=7.0",
+          ],
+      },
       version="1.0.18",
       author="Alejandro Rivas García",
       author_email="alejandrorivasgarcia@gmail.com",

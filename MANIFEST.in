@@ -1,0 +1,7 @@
+include README.md
+include LICENSE
+recursive-include docs *.rst *.py *.txt Makefile
+recursive-include timefeatures/help_html *
+recursive-include imgs *.png
+prune docs/build
+prune timefeatures/help_html/.doctrees

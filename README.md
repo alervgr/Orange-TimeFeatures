@@ -46,6 +46,7 @@ If using Anaconda Python distribution, simply run
 * AnyQt>=0.2.0
 * Orange3>=3.34.0
 * PyQt5>=5.15.6
+* PyQtWebEngine>=5.15.6
 * scipy>=1.7.3
 * Orange3-Network>=1.8.0
 
@@ -62,6 +63,19 @@ or
     python3 -m Orange.canvas
 
 New widgets are in the toolbox bar under Time-Features section.
+
+Documentation
+-------------
+
+The add-on includes Sphinx documentation for each widget. Orange resolves the
+local HTML pages through its internal Help panel, not through an internet URL.
+To rebuild the documentation locally, run
+
+    pip install -e ".[docs]"
+    python -m sphinx -b html docs timefeatures/help_html
+
+Use the widget help action in Orange to open the corresponding page inside the
+Orange Help window.
 
 Workflow Example
 -----
