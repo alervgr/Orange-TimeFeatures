@@ -40,7 +40,9 @@ from Orange.util import frompyfunc
 from Orange.data import Variable, Table, Value, Instance
 from Orange.data.util import get_unique_names
 from Orange.widgets import gui
-from Orange.widgets.settings import ContextSetting, DomainContextHandler
+from Orange.widgets.settings import (
+    ContextSetting, DomainContextHandler, Setting,
+)
 from Orange.widgets.utils import (
     itemmodels, vartype, unique_everseen as unique
 )
@@ -701,15 +703,42 @@ def freevars(exp: ast.AST, env: List[str]):
 
 
 class FeatureConstructorHandler(DomainContextHandler):
-    """Context handler that filters descriptors"""
+    """Compatibility handler only.
+
+    Earlier versions stored ``descriptors`` / ``currentIndex`` /
+    ``expressions_with_values`` as ``ContextSetting``s. We've moved to
+    plain ``Setting(..., schema_only=True)`` (the upstream Orange pattern)
+    so the values are properly serialized into the workflow `.ows` file
+    without needing an ``openContext`` / ``closeContext`` cycle.
+
+    On widget initialisation this handler reads the legacy last context
+    (if any) and pushes its values into the new plain settings, so old
+    workflows continue to work.
+    """
+    MAX_SAVED_CONTEXTS = 1
+
+    def initialize(self, instance, data=None):
+        super().initialize(instance, data)
+        if instance.context_settings:
+            ctx = instance.context_settings[0]
+
+            def pick_first(item):
+                # ContextHandler may wrap values in tuples (value, type).
+                if isinstance(item, tuple):
+                    return item[0]
+                return item
+
+            instance.descriptors = ctx.values.get("descriptors", [])
+            instance.expressions_with_values = pick_first(
+                ctx.values.get("expressions_with_values", False)
+            )
+            instance.currentIndex = pick_first(
+                ctx.values.get("currentIndex", -1)
+            )
 
     def is_valid_item(self, setting, item, attrs, metas):
-        """Check if descriptor `item` can be used with given domain.
-
-        Return True if descriptor's expression contains only
-        available variables and descriptors name does not clash with
-        existing variables.
-        """
+        """Legacy filter: kept so old ContextSetting workflows still validate
+        their descriptors against the current domain when migrated."""
         if item.name in attrs or item.name in metas:
             return False
 
@@ -750,10 +779,15 @@ class owtimefeaturesconstructor(OWWidget, ConcurrentWidgetMixin):
     want_main_area = False
 
     settingsHandler = FeatureConstructorHandler()
-    descriptors = ContextSetting([])
-    currentIndex = ContextSetting(-1)
-    expressions_with_values = ContextSetting(False)
-    settings_version = 3
+    # `schema_only=True` ⇒ los settings se guardan dentro del workflow
+    # `.ows`, pero no como defaults globales del widget. Es lo que el
+    # Feature Constructor de Orange upstream usa desde la v4. Antes
+    # eran ContextSettings, lo que requería openContext/closeContext
+    # (nunca cableados) y por eso no se persistían las variables.
+    descriptors = Setting([], schema_only=True)
+    currentIndex = Setting(-1, schema_only=True)
+    expressions_with_values = Setting(False, schema_only=True)
+    settings_version = 4
 
     EDITORS = [
         (ContinuousDescriptor, ContinuousFeatureEditor),
@@ -910,10 +944,14 @@ class owtimefeaturesconstructor(OWWidget, ConcurrentWidgetMixin):
             desc = self.featuremodel[min(index, len(self.featuremodel) - 1)]
             editor = self.editors[type(desc)]
             self.editorstack.setCurrentWidget(editor)
-            editor.setEditorData(desc, self.data.domain if self.data else None)
+            editor.setEditorData(desc, self._input_domain())
         self.editorstack.setEnabled(index >= 0)
         self.duplicateaction.setEnabled(index >= 0)
         self.removebutton.setEnabled(index >= 0)
+
+    def _input_domain(self):
+        data = self.dataOriginal if self.dataOriginal is not None else self.data
+        return data.domain if data is not None else None
 
     def reset_domain(self):
 
@@ -983,9 +1021,9 @@ class owtimefeaturesconstructor(OWWidget, ConcurrentWidgetMixin):
 
     def reserved_names(self, idx_=None):
         varnames = []
-        if self.data is not None:
-            varnames = [var.name for var in
-                        self.data.domain.variables + self.data.domain.metas]
+        domain = self._input_domain()
+        if domain is not None:
+            varnames = [var.name for var in domain.variables + domain.metas]
         varnames += [desc.name for idx, desc in enumerate(self.featuremodel)
                      if idx != idx_]
         return set(varnames)
@@ -993,34 +1031,47 @@ class owtimefeaturesconstructor(OWWidget, ConcurrentWidgetMixin):
     @Inputs.data
     @check_sql_input
     def setData(self, data=None):
-        """Set the input dataset."""
+        """Set the input dataset.
+
+        The editor list ("Variables to generate") lives in ``descriptors``,
+        which is a ContextSetting. Orange persists it across workflow
+        save/reload, so on every data arrival we *restore* the editor from
+        ``descriptors`` instead of clearing it. ``apply()`` always
+        re-transforms ``dataOriginal`` with the current descriptors, so
+        the editor stays the single source of truth.
+        """
+        selmodel = self.featureview.selectionModel()
+
+        if data is None:
+            self.data = None
+            self.dataOriginal = None
+            selmodel.selectionChanged.disconnect(self._on_selectedVariableChanged)
+            self.featuremodel[:] = []
+            self.featureModelTime[:] = []
+            self.setCurrentIndex(-1)
+            selmodel.selectionChanged.connect(self._on_selectedVariableChanged)
+            self.fix_button.setHidden(True)
+            self.editorstack.setEnabled(False)
+            self.Outputs.data.send(None)
+            return
 
         self.data = data
-
-        if self.dataOriginal is None or self.data.name != self.dataOriginal.name:
+        if (self.dataOriginal is None
+                or data.name != self.dataOriginal.name):
             self.dataOriginal = data.copy()
-            self.reset_domain()
 
         self.expressions_with_values = False
 
-        # Añado el descriptors a la nueva lista de variables.
-        if len(self.descriptors) > 0:
-            for desc in self.descriptors:
-                self.addFeatureTime(desc)
-
-        self.createConfigTable()
-
-        self.descriptors = []
-        self.currentIndex = -1
-
-        # disconnect from the selection model while reseting the model
-        selmodel = self.featureview.selectionModel()
+        # Restore the editor list from the persisted descriptors. We mirror
+        # the same list into featureModelTime ("Variables generated") so the
+        # two side-by-side views are kept in sync until ``on_done`` confirms
+        # the actual transform result.
         selmodel.selectionChanged.disconnect(self._on_selectedVariableChanged)
-
         self.featuremodel[:] = list(self.descriptors)
+        self.featureModelTime[:] = list(self.descriptors)
         self.setCurrentIndex(self.currentIndex)
-
         selmodel.selectionChanged.connect(self._on_selectedVariableChanged)
+
         self.fix_button.setHidden(not self.expressions_with_values)
         self.editorstack.setEnabled(self.currentIndex >= 0)
 
@@ -1030,28 +1081,32 @@ class owtimefeaturesconstructor(OWWidget, ConcurrentWidgetMixin):
 
         self.expressions = expressions
 
-        if self.expressions is None:
+        if expressions is None:
             self.Warning.clear()
             self.Error.transform_error.clear()
+            return
 
-        if self.data is not None and self.expressions is not None:
-            if self.expressions is not None:
-                if len(self.expressions.domain) >= 1 and (
-                        self.expressions.domain[0].name != "Variable" or self.expressions.domain[1].name != "Expression"):
-                    self.Warning.table_warning()
-                else:
-                    self.Error.transform_error.clear()
-                    for datos in reversed(self.expressions):
-                        if not math.isnan(datos[1]) and str(datos[1]) != "NaN":
-                            desc = ContinuousDescriptor(
-                                name=str(datos[0]),
-                                expression=str(datos[1]),
-                                meta=False,
-                                number_of_decimals=3,
-                            )
-                            self.addFeature(desc)
-        else:
-            self.Error.transform_error("There is not data input.")
+        if self.data is None:
+            self.Error.transform_error("There is no data input.")
+            return
+
+        domain = expressions.domain
+        if (len(domain) < 2
+                or domain[0].name != "Variable"
+                or domain[1].name != "Expression"):
+            self.Warning.table_warning()
+            return
+
+        self.Error.transform_error.clear()
+        for datos in reversed(expressions):
+            if not math.isnan(datos[1]) and str(datos[1]) != "NaN":
+                desc = ContinuousDescriptor(
+                    name=str(datos[0]),
+                    expression=str(datos[1]),
+                    meta=False,
+                    number_of_decimals=3,
+                )
+                self.addFeature(desc)
 
     def handleNewSignals(self):
         if self.data is not None:
@@ -1131,30 +1186,30 @@ class owtimefeaturesconstructor(OWWidget, ConcurrentWidgetMixin):
     def apply(self):
         self.cancel()
         self.Error.clear()
-        if self.data is None:
+        if self.dataOriginal is None:
             return
 
         desc = list(self.featuremodel)
         desc = self._validate_descriptors(desc)
-        self.start(run, self.data, desc, self.expressions_with_values)
-
-        '''
-        INTENTO DE PODER USAR VARIABLES NO CONTENIDAS EN EL DATASET ORIGINAL.
-        
-        desc = list(self.featuremodel)
-        for d in desc:
-            self.start(run, self.data, self._validate_descriptors(d), self.expressions_with_values)'''
-
+        # Always re-transform the original input. ``self.data`` may hold a
+        # previous transform's output, but using it as the source would
+        # accumulate state and break the "descriptors-as-single-source"
+        # contract that workflow persistence relies on.
+        self.start(run, self.dataOriginal, desc, self.expressions_with_values)
 
     def on_done(self, result: "Result") -> None:
-        data, attrs, desc = result.data, result.attributes, result.desc
+        data, attrs, _ = result.data, result.attributes, result.desc
         disc_attrs_not_ok = self.check_attrs_values(
             [var for var in attrs if var.is_discrete], data)
         if disc_attrs_not_ok:
             self.Error.more_values_needed(disc_attrs_not_ok)
             return
 
-        self.setData(data)
+        # Don't recurse into setData (that path is for *input* signals and
+        # would reset the editor). Update the local state directly.
+        self.data = data
+        self.featureModelTime[:] = list(self.descriptors)
+        self.createConfigTable()
         self.Outputs.data.send(data)
 
     def createConfigTable(self):
