@@ -24,6 +24,12 @@ from email.mime.multipart import MIMEMultipart
 
 MAX_DL_LIMIT = 1000000
 
+TABLE_NAME_REGEX = re.compile(r'^[A-Za-z_][A-Za-z0-9_]{0,62}$')
+
+
+def quote_ident(name):
+    return '"' + str(name).replace('"', '""') + '"'
+
 
 def is_postgres(backend):
     return getattr(backend, 'display_name', '') == "PostgreSQL"
@@ -189,16 +195,17 @@ class owsavetodb(OWBaseSql, OWWidget):
 
             variables.append(self.data.domain[i])
 
-        create_table_query = f"CREATE TABLE {table_name} ("
+        create_table_query = f"CREATE TABLE {quote_ident(table_name)} ("
         for variable in variables:
+            col = quote_ident(variable.name)
             if isinstance(variable, Orange.data.DiscreteVariable):
-                create_table_query += f'"{str(variable.name)}" VARCHAR,'
+                create_table_query += f'{col} VARCHAR,'
             elif isinstance(variable, Orange.data.ContinuousVariable):
-                create_table_query += f'"{variable.name}" FLOAT(10),'
+                create_table_query += f'{col} FLOAT(10),'
             elif isinstance(variable, Orange.data.TimeVariable):
-                create_table_query += f'"{variable.name}" TIMESTAMP,'
+                create_table_query += f'{col} TIMESTAMP,'
             elif isinstance(variable, Orange.data.StringVariable):
-                create_table_query += f'"{str(variable.name)}" VARCHAR,'
+                create_table_query += f'{col} VARCHAR,'
 
         create_table_query = create_table_query[:-1]
         create_table_query += ")"
@@ -209,7 +216,7 @@ class owsavetodb(OWBaseSql, OWWidget):
         except BackendError as ex:
             self.Error.connection(str(ex))
 
-        insert_query = f"INSERT INTO {table_name} VALUES ("
+        insert_query = f"INSERT INTO {quote_ident(table_name)} VALUES ("
         for i in range(len(variables)):
             insert_query += "%s,"
         insert_query = insert_query[:-1]  # Eliminar la coma final
@@ -313,6 +320,11 @@ class owsavetodb(OWBaseSql, OWWidget):
 
         if self.tableName.text() == "":
             self.Error.connection("Table name must be filled.")
+        elif not TABLE_NAME_REGEX.match(self.tableName.text().lower()):
+            self.Error.connection(
+                "Table name must start with a letter or underscore and "
+                "contain only letters, digits and underscores (max 63 chars)."
+            )
         elif self.servertext.text() == "" or self.databasetext.text() == "":
             self.Error.connection("Host and database fields must be filled.")
         elif self.emailDirection.text() != "":
@@ -331,14 +343,25 @@ class owsavetodb(OWBaseSql, OWWidget):
         else:
             class_name = None
 
-        query = "INSERT INTO public.datasets (name, datetime, rows, cols, class, class_name) VALUES ('" + self.tableName.text().lower() + "','" + datetime.now().strftime(
-            '%Y-%m-%d %H:%M:%S') + "','" + str(self.rows) + "','" + str(self.cols) + "','" + str(
-            self.target) + "','" + str(class_name) + "');"
+        table_name = self.tableName.text().lower()
+        query = (
+            "INSERT INTO public.datasets "
+            "(name, datetime, rows, cols, class, class_name) "
+            "VALUES (%s, %s, %s, %s, %s, %s)"
+        )
+        params = [
+            table_name,
+            datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            self.rows,
+            self.cols,
+            str(self.target),
+            class_name,
+        ]
 
         try:
-            with self.backend.execute_sql_query(query):
+            with self.backend.execute_sql_query(query, params=params):
                 pass
-                self.create_table(self.tableName.text().lower())
+            self.create_table(table_name)
         except BackendError as ex:
             self.Error.connection(str(ex))
 

@@ -96,108 +96,30 @@ def make_variable(descriptor, compute_value):
         raise TypeError
 
 
-# Función para modificar la expresión original
-# para que pueda ser leida por eval()
+# Patrones para numerar cada invocación a una función temporal:
+#   shift(var, n)       → shift0(var, n), shift1(var, n), ...
+#   {sum,mean,count,min,max,sd}(var, n, n) → idem con 3 argumentos.
+# Numerarlas permite ligarlas a su columna correspondiente en `funciones_permitidas`
+# al evaluar la expresión en FeatureFunc.__call_table.
+_TIME_FUNC_PATTERNS = {
+    "shift": re.compile(r'shift\(([^,]+,[-+]?\d+)\)'),
+    "sum":   re.compile(r'sum\(([^,]+,[-+]?\d+,[-+]?\d+)\)'),
+    "mean":  re.compile(r'mean\(([^,]+,[-+]?\d+,[-+]?\d+)\)'),
+    "count": re.compile(r'count\(([^,]+,[-+]?\d+,[-+]?\d+)\)'),
+    "min":   re.compile(r'min\(([^,]+,[-+]?\d+,[-+]?\d+)\)'),
+    "max":   re.compile(r'max\(([^,]+,[-+]?\d+,[-+]?\d+)\)'),
+    "sd":    re.compile(r'sd\(([^,]+,[-+]?\d+,[-+]?\d+)\)'),
+}
+
+
 def modificar_expression(expression):
-    # Encontrar todas las coincidencias con las funciones temporales y almacenarlas
-    matches_shift = list(re.finditer(r'shift\(([^,]+),([-+]?\d+)\)', expression))
-    matches_sum = list(re.finditer(r'sum\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expression))
-    matches_mean = list(re.finditer(r'mean\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expression))
-    matches_count = list(re.finditer(r'count\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expression))
-    matches_min = list(re.finditer(r'min\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expression))
-    matches_max = list(re.finditer(r'max\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expression))
-    matches_sd = list(re.finditer(r'sd\(([^,]+),([-+]?\d+),([-+]?\d+)\)', expression))
-
-    # Variables para contar matches
-    match_counter_shift = 0
-    match_counter_sum = 0
-    match_counter_mean = 0
-    match_counter_count = 0
-    match_counter_min = 0
-    match_counter_max = 0
-    match_counter_sd = 0
-    modified_expression = expression
-
-    # Iterar sobre todas las coincidencias de shift y cambiar la expresión
-    for match in matches_shift:
-        variable_name = match.group(1)
-        shift_value = match.group(2)
-
-        # Construir la nueva expresión con el número incremental
-        new_shift = f'shift{match_counter_shift}({variable_name},{shift_value})'
-
-        # Reemplazar solo la coincidencia actual en la expresión
-        modified_expression = modified_expression.replace(match.group(0), new_shift, 1)
-
-        match_counter_shift += 1
-
-    for match in matches_sum:
-        variable_name = match.group(1)
-        sum_value1 = match.group(2)
-        sum_value2 = match.group(3)
-
-        new_sum = f'sum{match_counter_sum}({variable_name},{sum_value1},{sum_value2})'
-
-        modified_expression = modified_expression.replace(match.group(0), new_sum, 1)
-
-        match_counter_sum += 1
-
-    for match in matches_mean:
-        variable_name = match.group(1)
-        mean_value1 = match.group(2)
-        mean_value2 = match.group(3)
-
-        new_mean = f'mean{match_counter_mean}({variable_name},{mean_value1},{mean_value2})'
-
-        modified_expression = modified_expression.replace(match.group(0), new_mean, 1)
-
-        match_counter_mean += 1
-
-    for match in matches_count:
-        variable_name = match.group(1)
-        count_value1 = match.group(2)
-        count_value2 = match.group(3)
-
-        new_count = f'count{match_counter_count}({variable_name},{count_value1},{count_value2})'
-
-        modified_expression = modified_expression.replace(match.group(0), new_count, 1)
-
-        match_counter_count += 1
-
-    for match in matches_min:
-        variable_name = match.group(1)
-        min_value1 = match.group(2)
-        min_value2 = match.group(3)
-
-        new_min = f'min{match_counter_min}({variable_name},{min_value1},{min_value2})'
-
-        modified_expression = modified_expression.replace(match.group(0), new_min, 1)
-
-        match_counter_min += 1
-
-    for match in matches_max:
-        variable_name = match.group(1)
-        max_value1 = match.group(2)
-        max_value2 = match.group(3)
-
-        new_max = f'max{match_counter_max}({variable_name},{max_value1},{max_value2})'
-
-        modified_expression = modified_expression.replace(match.group(0), new_max, 1)
-
-        match_counter_max += 1
-
-    for match in matches_sd:
-        variable_name = match.group(1)
-        sd_value1 = match.group(2)
-        sd_value2 = match.group(3)
-
-        new_sd = f'sd{match_counter_sd}({variable_name},{sd_value1},{sd_value2})'
-
-        modified_expression = modified_expression.replace(match.group(0), new_sd, 1)
-
-        match_counter_sd += 1
-
-    return modified_expression
+    for name, pattern in _TIME_FUNC_PATTERNS.items():
+        counter = count()
+        expression = pattern.sub(
+            lambda m, n=name, c=counter: f"{n}{next(c)}({m.group(1)})",
+            expression,
+        )
+    return expression
 
 
 def shift_function(var, z, tabla=None, cont=None):  # ----FUNCIÓN SHIFT()----
@@ -508,7 +430,7 @@ Categorical features are passed as strings
 
     def editorData(self):
         return FeatureDescriptor(name=self.nameedit.text(),
-                                 expression=self.nameedit.text(),
+                                 expression=self.expressionedit.text(),
                                  meta=self.metaattributecb.isChecked())
 
     def _invalidate(self):
@@ -1551,6 +1473,10 @@ def bind_variable(descriptor, env, data, use_values):
 
     func = FeatureFunc(descriptor.expression, source_vars, values, cast,
                        use_values=use_values, dtype=dtype)
+    # Orange chunks la tabla en bloques de 5000 filas al transformar. Sin la
+    # referencia al dataset completo, las funciones de ventana temporal
+    # perderían contexto en cada frontera de chunk.
+    func.set_source(data)
     return descriptor, func
 
 
@@ -1668,6 +1594,12 @@ class FeatureFunc:
 
     dtype: Optional['DType'] = None
 
+    # Detecta cualquier llamada a una función de ventana temporal.
+    # Si el resultado es None, podemos saltarnos el caché por chunk.
+    _TIME_FUNC_DETECT = re.compile(
+        r'(?:shift|sum|mean|count|min|max|sd)\([^,]+,[-+]?\d+(?:,[-+]?\d+)?\)'
+    )
+
     def __init__(self, expression, args, extra_env=None, cast=None, use_values=False,
                  dtype=None):
         self.expression = expression
@@ -1677,6 +1609,21 @@ class FeatureFunc:
         self.mask_exceptions = True
         self.use_values = use_values
         self.dtype = dtype
+        # Orange.data.table._FromTableConversion trocea el origen en chunks
+        # de max_rows_at_once=5000 al evaluar compute_value. Para que las
+        # funciones de ventana (shift/sum/mean/...) no pierdan contexto en
+        # cada frontera, guardamos el dataset completo y cacheamos el
+        # resultado entero indexado por Table.ids.
+        self._full_source = None
+        self._full_result = None
+        self._id_to_idx = None
+
+    def set_source(self, source):
+        """Registra el dataset completo para que las ventanas temporales se
+        evalúen una sola vez sobre todo el origen, no por chunk."""
+        self._full_source = source
+        self._full_result = None
+        self._id_to_idx = None
 
     def __call__(self, table, *_):
         if isinstance(table, Table):
@@ -1685,6 +1632,24 @@ class FeatureFunc:
             return self.__call_instance(table)
 
     def __call_table(self, table):
+        # Si tenemos el dataset completo y la expresión usa una función de
+        # ventana, computamos sobre toda la fuente y devolvemos la porción
+        # correspondiente a este chunk por id de fila.
+        if (self._full_source is not None
+                and table is not self._full_source
+                and len(table) < len(self._full_source)
+                and self._TIME_FUNC_DETECT.search(self.expression)):
+            if self._full_result is None:
+                self._full_result = self.__call_table(self._full_source)
+            if self._id_to_idx is None:
+                self._id_to_idx = {
+                    rid: i for i, rid in enumerate(self._full_source.ids)
+                }
+            idx = self._id_to_idx
+            full = self._full_result
+            return [full[idx[rid]] if rid in idx else None
+                    for rid in table.ids]
+
         try:
             # Crear un diccionario para almacenar las variables
             variables = {}
@@ -1700,6 +1665,8 @@ class FeatureFunc:
             sd_info_list = []
 
             cont = 0
+            # Globals seguros para eval: builtins desactivados + whitelist curada.
+            base_eval_globals = {"__builtins__": {}, **globals()["__GLOBALS"]}
             expresion_regular = r'shift\(([^,]+),[-\d]+\)|sum\(([^,]+),[-\d]+,[-\d]+\)|mean\(([^,]+),[-\d]+,' \
                                 r'[-\d]+\)|count\(([^,]+),[-\d]+,[-\d]+\)|min\(([^,]+),[-\d]+,[-\d]+\)|max\(([^,]+),' \
                                 r'[-\d]+,[-\d]+\)|sd\(([^,]+),[-\d]+,[-\d]+\)'
@@ -1794,14 +1761,21 @@ class FeatureFunc:
 
                     # Utilizar la expresión modificada para evaluar la expresión
                     try:
-                        result = eval(modified_expression, var_dict, funciones_permitidas)
+                        result = eval(
+                            modified_expression,
+                            {**base_eval_globals, **var_dict},
+                            funciones_permitidas,
+                        )
                     # Las operaciones con NaN serán NaN
-                    except:
+                    except Exception:
                         result = None
 
                 else:
                     # --------------------NO FUNCION TEMPORAL-----------------------
-                    result = eval(self.expression, var_dict)
+                    result = eval(
+                        self.expression,
+                        {**base_eval_globals, **var_dict},
+                    )
 
                 list_res.append(result)
 
