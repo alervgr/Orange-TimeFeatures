@@ -41,7 +41,7 @@ setup(name="TimeFeatures",
               "Sphinx>=7.0",
           ],
       },
-      version="2.0.0",
+      version="2.1.0",
       author="Alejandro Rivas García",
       author_email="alejandrorivasgarcia@gmail.com",
       keywords=[
