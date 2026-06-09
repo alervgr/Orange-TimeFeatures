@@ -181,6 +181,15 @@ the expression.</p></li>
 </ul>
 <p><strong>Save to DB</strong></p>
 <ul class="simple">
+<li><p><em>New:</em> <strong>write mode</strong> selector with three options — <em>Create new</em>
+(default, fail if the target exists), <em>Overwrite</em> (drop and
+recreate the table and its <code class="docutils literal notranslate"><span class="pre">datasets</span></code> row), <em>Append</em> (keep
+existing rows and add the new ones). Re-running a workflow no
+longer breaks. The persisted <code class="docutils literal notranslate"><span class="pre">write_mode</span></code> Setting defaults to
+<code class="docutils literal notranslate"><span class="pre">&quot;create&quot;</span></code> so old workflows keep their previous behaviour. After
+the upload, the widget runs <code class="docutils literal notranslate"><span class="pre">SELECT</span> <span class="pre">COUNT(*)</span></code> and rewrites the
+<code class="docutils literal notranslate"><span class="pre">datasets</span></code> row with the actual total, so the registry stays
+accurate across appends.</p></li>
 <li><p><em>New:</em> <strong>MySQL support</strong>. The connection panel now exposes a
 database-type selector (PostgreSQL / MySQL). Per-dialect column
 types and identifier quoting (<code class="docutils literal notranslate"><span class="pre">&quot;name&quot;</span></code> vs <code class="docutils literal notranslate"><span class="pre">\`name\`</span></code>) live in

@@ -158,7 +158,25 @@ in 4.2s”), error (“Connection failed: …”, “Upload failed: …”).</p>
 rules (see <em>Validation</em> below); MySQL accepts a superset, so
 the same rule is safe on both.</p></td>
 </tr>
-<tr class="row-odd"><td><p>Email</p></td>
+<tr class="row-odd"><td><p>Mode</p></td>
+<td><p>Combo between the Table name and the Email fields:</p>
+<ul class="simple">
+<li><p><strong>Create new (fail if table exists)</strong> — default, refuses to
+touch an existing table or metadata row. Use this for first
+uploads or when you want a clear error on accidental name
+collisions.</p></li>
+<li><p><strong>Overwrite (drop and recreate)</strong> — drops the existing data
+table and the matching <code class="docutils literal notranslate"><span class="pre">datasets</span></code> row before uploading,
+then recreates them. Re-running the workflow stops breaking.</p></li>
+<li><p><strong>Append (keep existing rows)</strong> — adds rows to the existing
+table (creating it if it doesn’t exist). After the upload,
+the widget runs <code class="docutils literal notranslate"><span class="pre">SELECT</span> <span class="pre">COUNT(*)</span></code> and rewrites the
+<code class="docutils literal notranslate"><span class="pre">datasets</span></code> row with the <em>actual</em> total row count, so the
+registry stays accurate across repeated appends.</p></li>
+</ul>
+</td>
+</tr>
+<tr class="row-even"><td><p>Email</p></td>
 <td><p>Optional notification address. A summary email is sent once the
 upload finishes, including the table name, row / column counts,
 and elapsed time.</p></td>
@@ -180,15 +198,35 @@ Orange canvas stays responsive even during long uploads.</p></li>
 <ul class="simple">
 <li><p>converts the dataset to a pandas DataFrame with
 <code class="docutils literal notranslate"><span class="pre">Orange.data.pandas_compat.table_to_frame(include_metas=True)</span></code>
-and reorders the columns (class first, then metas in domain order,
-then attributes) to match the existing schema convention;</p></li>
-<li><p>creates the <code class="docutils literal notranslate"><span class="pre">datasets</span></code> metadata table if it doesn’t exist;</p></li>
-<li><p>inserts one row into <code class="docutils literal notranslate"><span class="pre">datasets</span></code> describing this upload;</p></li>
-<li><p>writes the dataset itself in <code class="docutils literal notranslate"><span class="pre">PANDAS_SQL_CHUNKSIZE</span></code> chunks
-(default <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">000</span></code>) via <code class="docutils literal notranslate"><span class="pre">df.to_sql(...,</span> <span class="pre">method='multi')</span></code>.</p></li>
+and reorders the columns (class first, then metas in domain
+order, then attributes) to match the existing schema convention;</p></li>
+<li><p>ensures the <code class="docutils literal notranslate"><span class="pre">datasets</span></code> metadata table exists;</p></li>
+<li><p>applies the mode-specific preparation:</p>
+<ul>
+<li><p><strong>create</strong> — fail fast if a <code class="docutils literal notranslate"><span class="pre">datasets</span></code> row with this name
+already exists.</p></li>
+<li><p><strong>overwrite</strong> — <code class="docutils literal notranslate"><span class="pre">DROP</span> <span class="pre">TABLE</span> <span class="pre">IF</span> <span class="pre">EXISTS</span></code> on the target plus
+<code class="docutils literal notranslate"><span class="pre">DELETE</span></code> of the matching <code class="docutils literal notranslate"><span class="pre">datasets</span></code> row.</p></li>
+<li><p><strong>append</strong> — leave everything in place; the upload itself will
+create the table on the first chunk if it doesn’t exist.</p></li>
+</ul>
+</li>
+<li><p>writes the dataset in <code class="docutils literal notranslate"><span class="pre">PANDAS_SQL_CHUNKSIZE</span></code> chunks (default
+<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">000</span></code>) via <code class="docutils literal notranslate"><span class="pre">df.to_sql(...,</span> <span class="pre">method='multi')</span></code> with the
+<code class="docutils literal notranslate"><span class="pre">if_exists</span></code> value tailored to the mode (see
+<code class="docutils literal notranslate"><span class="pre">_pandas_if_exists</span></code> for the exact table);</p></li>
+<li><p>runs <code class="docutils literal notranslate"><span class="pre">SELECT</span> <span class="pre">COUNT(*)</span></code> on the target table and re-inserts the
+<code class="docutils literal notranslate"><span class="pre">datasets</span></code> row with that real row count, so the registry stays
+consistent even after multiple appends.</p></li>
 </ul>
 </li>
 </ol>
+<p>Everything happens inside a single SQLAlchemy transaction
+(<code class="docutils literal notranslate"><span class="pre">engine.begin()</span></code>), so a mid-upload error rolls every step back on
+PostgreSQL. MySQL auto-commits DDL (<code class="docutils literal notranslate"><span class="pre">DROP</span> <span class="pre">TABLE</span></code>, <code class="docutils literal notranslate"><span class="pre">CREATE</span> <span class="pre">TABLE</span></code>),
+so an Overwrite that crashes during the upload may leave you without
+the original table — there’s no way around that without engine-level
+support.</p>
 <p>While the worker runs, the widget’s progress bar and status label are
 updated through Qt signals; the <strong>Save</strong>, <strong>Connect</strong> and form controls
 are temporarily disabled.</p>

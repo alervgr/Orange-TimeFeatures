@@ -34,6 +34,33 @@ CONNECTION_STATUS_STYLES = {
     "error": "QLabel { color: #c62828; font-weight: 600; padding-top: 4px; }",
 }
 
+# Write modes presented in the UI. The first item of each tuple is the
+# persisted key, the second is the user-facing label.
+_WRITE_MODES = (
+    ("create", "Create new (fail if table exists)"),
+    ("overwrite", "Overwrite (drop and recreate)"),
+    ("append", "Append (keep existing rows)"),
+)
+_WRITE_MODE_KEYS = tuple(key for key, _ in _WRITE_MODES)
+
+
+def _pandas_if_exists(write_mode, chunk_index):
+    """Map ``(write_mode, chunk_index)`` to the ``if_exists`` value that
+    ``DataFrame.to_sql`` expects for that specific chunk.
+
+    - **create**: the first chunk must fail if the table already exists
+      so the user notices the collision; the rest append to the freshly
+      created table.
+    - **overwrite**: we drop the existing table before uploading, so the
+      first chunk creates a fresh one (``if_exists='fail'``); subsequent
+      chunks append.
+    - **append**: every chunk uses ``'append'`` — pandas creates the
+      table on the first call if it doesn't exist yet.
+    """
+    if write_mode == "append":
+        return "append"
+    return "fail" if chunk_index == 0 else "append"
+
 # PostgreSQL identifier rules: letter/underscore start, alphanumeric/_, max 63.
 # MySQL identifier rules are looser (allow digit start, 64 chars) but accepting
 # this subset works on both dialects.
@@ -162,58 +189,20 @@ def _insert_metadata_sql(dialect):
     )
 
 
-def _send_completion_mail(
-        mail, selected_backend, server_text, database_text, table_name,
-        rows_text, cols_text, class_name, target_text, time_elapsed):
-    # Configuración de la conexión
-    sender = 'savetodbodm@gmail.com'
-    password = 'arnj lakd lyol rakg'
-    server = 'smtp.gmail.com'
-    port = 587
-
-    message = MIMEMultipart("alternative")
-
-    current_datetime = datetime.now()
-    formatted_datetime = current_datetime.strftime('%d-%m-%Y %H:%M:%S')
-
-    message["Subject"] = "Upload completed - Save To DB - " + str(formatted_datetime)
-    message["From"] = sender
-    message["To"] = mail
-
-    body = f"""\
-    <html>
-        <head>
-        </head>
-        <body>
-            <h1>Save to DB - Widget</h1>
-            <p>Your data upload has been completed!</p>
-            <p>-Table information:</p>
-            <ul>
-                <li>Table name: {table_name}.</li>
-                <li>{rows_text}.</li>
-                <li>{cols_text}.</li>
-                <li>Class name: {class_name}.</li>
-                <li>{target_text}.</li>
-            </ul>
-            <p>-Connection information:</p>
-            <ul>
-                <li>Backend: {selected_backend}.</li>
-                <li>Server: {server_text}.</li>
-                <li>Database name: {database_text}.</li>
-                <li>Time Elapsed: {time_elapsed}s.</li>
-            </ul>
-        </body>
-    </html>
-    """
-
-    part = MIMEText(body, "html")
-    message.attach(part)
-
-    context = ssl.create_default_context()
-    with smtplib.SMTP(server, port=port) as smtp:
-        smtp.starttls(context=context)
-        smtp.login(sender, password)
-        smtp.send_message(message)
+def _send_completion_mail(*_args, **_kwargs):
+    # Email notifications are currently disabled.
+    #
+    # The previous implementation hardcoded an SMTP sender address and an
+    # app password in this file — they ended up in git history and were
+    # therefore compromised. The credentials have been removed and the
+    # corresponding QLineEdit in ``_setup_gui`` is commented out, so the
+    # upload worker no longer reaches this code path.
+    #
+    # To re-enable: source the sender / app password from environment
+    # variables (or a secrets manager) and uncomment the email field in
+    # ``owsavetodb._setup_gui`` plus the wiring in ``_start_upload`` /
+    # ``saveData``.
+    return
 
 
 class _UploadWorker(QObject):
@@ -223,17 +212,22 @@ class _UploadWorker(QObject):
     failed = pyqtSignal(str)
 
     def __init__(self, *, table, dialect, connection_params, metadata,
-                 email_params):
+                 email_params, write_mode):
         super().__init__()
         self.table = table
         self.dialect = dialect
         self.connection_params = connection_params
         self.metadata = metadata
         self.email_params = email_params
+        # One of "create" / "overwrite" / "append".
+        self.write_mode = write_mode
 
     def run(self):
         start_time = time.time()
         engine = None
+        qi = self.dialect.quote_ident
+        table_name = self.metadata["table_name"]
+
         try:
             self.status_changed.emit("Preparing data...")
             self.progress_changed.emit(2)
@@ -247,46 +241,103 @@ class _UploadWorker(QObject):
             }
 
             self.status_changed.emit("Connecting to database...")
-            self.progress_changed.emit(8)
-            engine = _create_sqlalchemy_engine(self.dialect, **self.connection_params)
+            self.progress_changed.emit(6)
+            engine = _create_sqlalchemy_engine(
+                self.dialect, **self.connection_params
+            )
 
             total_chunks = (
-                (len(frame) + PANDAS_SQL_CHUNKSIZE - 1) //
-                PANDAS_SQL_CHUNKSIZE
+                (len(frame) + PANDAS_SQL_CHUNKSIZE - 1)
+                // PANDAS_SQL_CHUNKSIZE
             ) or 1
 
             with engine.begin() as connection:
                 self.status_changed.emit("Creating metadata table...")
                 connection.execute(text(_create_master_table_sql(self.dialect)))
-                self.progress_changed.emit(12)
+                self.progress_changed.emit(10)
 
-                self.status_changed.emit("Writing dataset metadata...")
-                connection.execute(
-                    text(_insert_metadata_sql(self.dialect)),
-                    self.metadata["params"],
-                )
-                self.progress_changed.emit(18)
+                # --- Mode-specific preparation -------------------------- #
+                if self.write_mode == "create":
+                    # Fail fast if the user already saved a dataset with
+                    # this name; otherwise we'd waste time uploading and
+                    # collide on the metadata PRIMARY KEY at the end.
+                    existing = connection.execute(
+                        text(
+                            f"SELECT 1 FROM {qi('datasets')} "
+                            f"WHERE {qi('name')} = :name"
+                        ),
+                        {"name": table_name},
+                    ).first()
+                    if existing is not None:
+                        raise ValueError(
+                            f"A dataset named '{table_name}' already "
+                            "exists. Choose 'Overwrite' or 'Append' "
+                            "mode, or use a different table name."
+                        )
+                elif self.write_mode == "overwrite":
+                    self.status_changed.emit(
+                        f"Dropping existing table {table_name}..."
+                    )
+                    connection.execute(
+                        text(f"DROP TABLE IF EXISTS {qi(table_name)}")
+                    )
+                    connection.execute(
+                        text(
+                            f"DELETE FROM {qi('datasets')} "
+                            f"WHERE {qi('name')} = :name"
+                        ),
+                        {"name": table_name},
+                    )
+                self.progress_changed.emit(14)
 
+                # --- Data upload ---------------------------------------- #
                 for index, chunk in enumerate(_iter_dataframe_chunks(frame)):
                     self.status_changed.emit(
                         f"Uploading rows {index + 1}/{total_chunks}..."
                     )
                     chunk.to_sql(
-                        self.metadata["table_name"],
+                        table_name,
                         con=connection,
-                        if_exists="fail" if index == 0 else "append",
+                        if_exists=_pandas_if_exists(self.write_mode, index),
                         index=False,
                         dtype=dtype,
                         method="multi",
                     )
                     self.progress_changed.emit(
-                        18 + ((index + 1) * 82 / total_chunks)
+                        14 + ((index + 1) * 80 / total_chunks)
                     )
+
+                # --- Refresh the metadata row to mirror reality --------- #
+                self.status_changed.emit("Updating metadata...")
+                count_row = connection.execute(
+                    text(f"SELECT COUNT(*) FROM {qi(table_name)}")
+                ).first()
+                actual_rows = int(count_row[0]) if count_row else 0
+
+                # DELETE-then-INSERT works uniformly: in overwrite/append
+                # we've either dropped the row already or want to replace
+                # the obsolete count; in create the row never existed.
+                connection.execute(
+                    text(
+                        f"DELETE FROM {qi('datasets')} "
+                        f"WHERE {qi('name')} = :name"
+                    ),
+                    {"name": table_name},
+                )
+                params = dict(self.metadata["params"])
+                params["row_count"] = actual_rows
+                connection.execute(
+                    text(_insert_metadata_sql(self.dialect)),
+                    params,
+                )
+                self.progress_changed.emit(96)
 
             time_elapsed = round(time.time() - start_time, 3)
             if self.email_params["mail"]:
                 self.status_changed.emit("Sending completion email...")
-                _send_completion_mail(time_elapsed=time_elapsed, **self.email_params)
+                _send_completion_mail(
+                    time_elapsed=time_elapsed, **self.email_params
+                )
 
             self.progress_changed.emit(100)
             self.finished.emit(time_elapsed)
@@ -461,6 +512,9 @@ class owsavetodb(OWBaseSql, OWWidget):
     # so old workflows behave the same.
     selected_backend = Setting("PostgreSQL")
     sql = Setting("")
+    # How to handle an existing table: "create" (default, fail on collision),
+    # "overwrite" (drop and recreate), "append" (keep existing rows).
+    write_mode = Setting("create")
 
     class Warning(OWBaseSql.Warning):
         missing_extension = Msg("Database is missing extensions: {}")
@@ -472,6 +526,8 @@ class owsavetodb(OWBaseSql, OWWidget):
         # Lint
         self.backendcombo = None
         self.connection_status_label = None
+        self.modeCombo = None
+        self.emailDirection = None
         self.data = None
         self.rows = 0
         self.cols = 0
@@ -522,6 +578,10 @@ class owsavetodb(OWBaseSql, OWWidget):
         super()._setup_gui()
         layoutA = QGridLayout()
         layoutA.setSpacing(3)
+        # Visible gap between column 0 (mode combo) and column 2 (Save
+        # button) so they don't end up flush against each other on the
+        # action row at the bottom of the panel.
+        layoutA.setColumnMinimumWidth(1, 12)
         gui.widgetBox(self.controlArea, orientation=layoutA, box='Save dataset')
         self.target_label = QLabel()
         self.target_label.setText("Class: None")
@@ -532,19 +592,48 @@ class owsavetodb(OWBaseSql, OWWidget):
         self.cols_label = QLabel()
         self.cols_label.setText("Columns: 0")
         layoutA.addWidget(self.cols_label, 2, 0)
-        self.emailDirection = QLineEdit(
-            placeholderText="Email... (Optional)", toolTip="Email direction")
-        layoutA.addWidget(self.emailDirection, 4, 0)
         self.tableName = QLineEdit(
             placeholderText="Table name...", toolTip="Table name")
         layoutA.addWidget(self.tableName, 3, 0)
+
+        # Write mode selector: how to handle an existing table on save.
+        self.modeCombo = QComboBox()
+        self.modeCombo.setToolTip(
+            "How to handle an existing table:\n"
+            "  • Create new — fail if a table with the same name exists.\n"
+            "  • Overwrite — drop the existing table and recreate it.\n"
+            "  • Append — keep existing rows and append the new ones."
+        )
+        for key, label in _WRITE_MODES:
+            self.modeCombo.addItem(label, userData=key)
+        selected = self.write_mode if self.write_mode in _WRITE_MODE_KEYS \
+            else "create"
+        for i in range(self.modeCombo.count()):
+            if self.modeCombo.itemData(i) == selected:
+                self.modeCombo.setCurrentIndex(i)
+                break
+        self.write_mode = selected
+        self.modeCombo.currentIndexChanged.connect(self._on_mode_changed)
+        # Same row as the Save button so the action row (mode + Save)
+        # sits at the bottom of the panel, with row 4 left empty as a
+        # small visual breather above.
+        layoutA.addWidget(self.modeCombo, 5, 0)
+
+        # Email-notification field disabled: see ``_send_completion_mail``
+        # for the rationale. Keeping the reference as ``None`` lets the
+        # surrounding code paths (``_set_upload_controls_enabled``,
+        # ``_start_upload``) detect the absence and skip cleanly.
+        # self.emailDirection = QLineEdit(
+        #     placeholderText="Email... (Optional)", toolTip="Email direction")
+        # layoutA.addWidget(self.emailDirection, 5, 0)
+        self.emailDirection = None
         self.btn_savedata = QPushButton(
             "Save", toolTip="Save a dataset into a DB",
             minimumWidth=120
         )
         self.btn_savedata.clicked.connect(self.saveData)
         self.btn_savedata.setEnabled(False)
-        layoutA.addWidget(self.btn_savedata, 4, 2)
+        layoutA.addWidget(self.btn_savedata, 5, 2)
         self._add_backend_controls()
         self._add_connection_status()
 
@@ -584,6 +673,12 @@ class owsavetodb(OWBaseSql, OWWidget):
         self.backend = None
         self._set_connection_status("Not connected", "neutral")
 
+    def _on_mode_changed(self, index):
+        if self._uploading:
+            return
+        data = self.modeCombo.itemData(index)
+        self.write_mode = data if data in _WRITE_MODE_KEYS else "create"
+
     def connect(self):
         if self._uploading:
             return
@@ -596,78 +691,18 @@ class owsavetodb(OWBaseSql, OWWidget):
     # ------------------------------------------------------------------ #
     #  Data persistence
     # ------------------------------------------------------------------ #
-    def send_mail(self, mail, time_elapsed):
-
-        # Configuración de la conexión
-        sender = 'savetodbodm@gmail.com'
-        password = 'arnj lakd lyol rakg'
-        server = 'smtp.gmail.com'
-        port = 587
-
-        # Configuración del destinatario
-        to = mail
-
-        # Configuración de las cabeceras y del mensaje
-        message = MIMEMultipart("alternative")
-
-        current_datetime = datetime.now()
-        formatted_datetime = current_datetime.strftime('%d-%m-%Y %H:%M:%S')
-
-        message["Subject"] = "Upload completed - Save To DB - " + str(formatted_datetime)
-        message["From"] = sender
-        message["To"] = to
-
-        if self.data.domain.class_var:
-            class_name = self.data.domain.class_var.name
-        else:
-            class_name = None
-
-        body = f"""\
-        <html>
-            <head>
-            </head>
-            <body>
-                <h1>Save to DB - Widget</h1>
-                <p>Your data upload has been completed!</p>
-                <p>-Table information:</p>
-                <ul>
-                    <li>Table name: {str(self.tableName.text())}.</li>
-                    <li>{str(self.rows_label.text())}.</li>
-                    <li>{str(self.cols_label.text())}.</li>
-                    <li>Class name: {str(class_name)}.</li>
-                    <li>{str(self.target_label.text())}.</li>
-                </ul>
-                <p>-Connection information:</p>
-                <ul>
-                    <li>Backend: {self.selected_backend}.</li>
-                    <li>Server: {str(self.servertext.text())}.</li>
-                    <li>Database name: {str(self.databasetext.text())}.</li>
-                    <li>Time Elapsed: {str(time_elapsed)}s.</li>
-                </ul>
-            </body>
-        </html>
-        """
-
-        part = MIMEText(body, "html")
-        message.attach(part)
-
-        # Envío del mensaje
-        try:
-            context = ssl.create_default_context()
-            with smtplib.SMTP(server, port=port) as smtp:
-                smtp.starttls(context=context)
-                smtp.login(sender, password)
-                smtp.send_message(message)
-        except Exception as ex:
-            self.Error.connection(str(ex))
+    # NOTE: ``send_mail`` used to live here as a per-widget legacy helper
+    # that carried hardcoded Gmail credentials. It was already dead code
+    # (the worker calls the module-level ``_send_completion_mail``
+    # instead) and the secret has been removed; the entire method was
+    # deleted as part of disabling email notifications. See the comment
+    # at the top of ``_send_completion_mail`` for re-enable instructions.
 
     def saveData(self):
         if self._uploading:
             return
 
         self.clear()
-
-        email_regex = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
 
         if self.tableName.text() == "":
             self.Error.connection("Table name must be filled.")
@@ -678,11 +713,6 @@ class owsavetodb(OWBaseSql, OWWidget):
             )
         elif self.servertext.text() == "" or self.databasetext.text() == "":
             self.Error.connection("Host and database fields must be filled.")
-        elif self.emailDirection.text() != "":
-            if not re.match(email_regex, self.emailDirection.text()):
-                self.Error.connection("The field email must be an email.")
-            else:
-                self.insert_data()
         else:
             self.insert_data()
 
@@ -725,8 +755,11 @@ class owsavetodb(OWBaseSql, OWWidget):
             "username": self.username,
             "password": self.password,
         }
+        # Email notifications are disabled (see ``_send_completion_mail``).
+        # ``mail`` stays empty so the worker's ``if self.email_params["mail"]``
+        # check short-circuits without touching the disabled function.
         email_params = {
-            "mail": str(self.emailDirection.text()),
+            "mail": "",
             "selected_backend": self.selected_backend,
             "server_text": str(self.servertext.text()),
             "database_text": str(self.databasetext.text()),
@@ -750,6 +783,7 @@ class owsavetodb(OWBaseSql, OWWidget):
             connection_params=connection_params,
             metadata=metadata,
             email_params=email_params,
+            write_mode=self.write_mode,
         )
         self._upload_worker.moveToThread(self._upload_thread)
         self._upload_thread.started.connect(self._upload_worker.run)
@@ -790,9 +824,11 @@ class owsavetodb(OWBaseSql, OWWidget):
     def _set_upload_controls_enabled(self, enabled):
         for widget in (
                 self.connectbutton, self.btn_savedata, self.backendcombo,
+                self.modeCombo,
                 self.servertext, self.databasetext, self.usernametext,
                 self.passwordtext, self.tableName, self.emailDirection):
-            widget.setEnabled(enabled)
+            if widget is not None:
+                widget.setEnabled(enabled)
         self.btn_savedata.setEnabled(enabled and bool(self.data))
 
     def onDeleteWidget(self):

@@ -13,8 +13,10 @@ from timefeatures.widgets.owsavetodb import (
     _DIALECTS,
     _MySQLDialect,
     _PostgresDialect,
+    _WRITE_MODE_KEYS,
     _dataframe_for_sql_export,
     _iter_dataframe_chunks,
+    _pandas_if_exists,
     _sql_export_variables,
     quote_ident,
 )
@@ -245,6 +247,40 @@ class TestDataFrameExport(unittest.TestCase):
 
         self.assertEqual(len(chunks), 1)
         self.assertTrue(chunks[0].empty)
+
+
+# --------------------------------------------------------------------- #
+#  Write-mode wiring
+# --------------------------------------------------------------------- #
+class TestPandasIfExists(unittest.TestCase):
+    def test_create_first_chunk_fails_then_appends(self):
+        # ``create`` keeps the original guard: fail on the first chunk if
+        # the target table already exists; from chunk 1 onwards we
+        # always append (the table we just created).
+        self.assertEqual(_pandas_if_exists("create", 0), "fail")
+        self.assertEqual(_pandas_if_exists("create", 1), "append")
+        self.assertEqual(_pandas_if_exists("create", 42), "append")
+
+    def test_overwrite_uses_same_pattern_as_create(self):
+        # The worker drops the table separately first, so the chunks
+        # themselves still use create-style semantics.
+        self.assertEqual(_pandas_if_exists("overwrite", 0), "fail")
+        self.assertEqual(_pandas_if_exists("overwrite", 5), "append")
+
+    def test_append_always_appends(self):
+        # ``append`` must never raise: pandas creates the table if it
+        # doesn't exist and appends if it does.
+        for i in range(0, 10):
+            self.assertEqual(_pandas_if_exists("append", i), "append")
+
+
+class TestWriteModeKeys(unittest.TestCase):
+    def test_known_modes(self):
+        # The Setting persists these literal strings, so a typo here
+        # would silently fall back to "create" in the widget.
+        self.assertEqual(
+            set(_WRITE_MODE_KEYS), {"create", "overwrite", "append"},
+        )
 
 
 if __name__ == "__main__":

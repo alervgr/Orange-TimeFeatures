@@ -59,6 +59,21 @@ TimeFeatures-specific controls:
      - Destination table name. Validated against PostgreSQL identifier
        rules (see *Validation* below); MySQL accepts a superset, so
        the same rule is safe on both.
+   * - Mode
+     - Combo between the Table name and the Email fields:
+
+       - **Create new (fail if table exists)** — default, refuses to
+         touch an existing table or metadata row. Use this for first
+         uploads or when you want a clear error on accidental name
+         collisions.
+       - **Overwrite (drop and recreate)** — drops the existing data
+         table and the matching ``datasets`` row before uploading,
+         then recreates them. Re-running the workflow stops breaking.
+       - **Append (keep existing rows)** — adds rows to the existing
+         table (creating it if it doesn't exist). After the upload,
+         the widget runs ``SELECT COUNT(*)`` and rewrites the
+         ``datasets`` row with the *actual* total row count, so the
+         registry stays accurate across repeated appends.
    * - Email
      - Optional notification address. A summary email is sent once the
        upload finishes, including the table name, row / column counts,
@@ -79,12 +94,32 @@ When **Save** is clicked, the widget:
 
    - converts the dataset to a pandas DataFrame with
      ``Orange.data.pandas_compat.table_to_frame(include_metas=True)``
-     and reorders the columns (class first, then metas in domain order,
-     then attributes) to match the existing schema convention;
-   - creates the ``datasets`` metadata table if it doesn't exist;
-   - inserts one row into ``datasets`` describing this upload;
-   - writes the dataset itself in ``PANDAS_SQL_CHUNKSIZE`` chunks
-     (default ``1 000``) via ``df.to_sql(..., method='multi')``.
+     and reorders the columns (class first, then metas in domain
+     order, then attributes) to match the existing schema convention;
+   - ensures the ``datasets`` metadata table exists;
+   - applies the mode-specific preparation:
+
+     - **create** — fail fast if a ``datasets`` row with this name
+       already exists.
+     - **overwrite** — ``DROP TABLE IF EXISTS`` on the target plus
+       ``DELETE`` of the matching ``datasets`` row.
+     - **append** — leave everything in place; the upload itself will
+       create the table on the first chunk if it doesn't exist.
+
+   - writes the dataset in ``PANDAS_SQL_CHUNKSIZE`` chunks (default
+     ``1 000``) via ``df.to_sql(..., method='multi')`` with the
+     ``if_exists`` value tailored to the mode (see
+     ``_pandas_if_exists`` for the exact table);
+   - runs ``SELECT COUNT(*)`` on the target table and re-inserts the
+     ``datasets`` row with that real row count, so the registry stays
+     consistent even after multiple appends.
+
+Everything happens inside a single SQLAlchemy transaction
+(``engine.begin()``), so a mid-upload error rolls every step back on
+PostgreSQL. MySQL auto-commits DDL (``DROP TABLE``, ``CREATE TABLE``),
+so an Overwrite that crashes during the upload may leave you without
+the original table — there's no way around that without engine-level
+support.
 
 While the worker runs, the widget's progress bar and status label are
 updated through Qt signals; the **Save**, **Connect** and form controls

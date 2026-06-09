@@ -89,6 +89,15 @@ Unreleased
 
 **Save to DB**
 
+- *New:* **write mode** selector with three options — *Create new*
+  (default, fail if the target exists), *Overwrite* (drop and
+  recreate the table and its ``datasets`` row), *Append* (keep
+  existing rows and add the new ones). Re-running a workflow no
+  longer breaks. The persisted ``write_mode`` Setting defaults to
+  ``"create"`` so old workflows keep their previous behaviour. After
+  the upload, the widget runs ``SELECT COUNT(*)`` and rewrites the
+  ``datasets`` row with the actual total, so the registry stays
+  accurate across appends.
 - *New:* **MySQL support**. The connection panel now exposes a
   database-type selector (PostgreSQL / MySQL). Per-dialect column
   types and identifier quoting (``"name"`` vs ``\`name\```) live in
