@@ -48,9 +48,21 @@ Controls
        host/db (N datasets)", "Loaded <name> (N rows)"), error
        ("Connection failed: …", "Load failed: …").
    * - Dataset
-     - Combo populated from ``SELECT * FROM datasets ORDER BY
-       datetime DESC``. The most recent upload comes first; the last
-       choice is restored when reopening a workflow.
+     - Searchable combo populated from ``SELECT * FROM datasets ORDER
+       BY datetime DESC``. The most recent upload comes first; the
+       last choice is restored when reopening a workflow. Type to
+       filter the visible items — handy when the registry grows large.
+   * - ↻ (Refresh)
+     - Small button to the right of the Dataset combo. Re-runs the
+       list query without dropping the connection. Useful if another
+       Orange canvas (or a parallel tool) just published a new
+       dataset while this widget was open.
+   * - Delete
+     - Drops the currently selected dataset's table from the database
+       and removes its row in ``datasets``. Gated by a confirmation
+       dialog — there is no Orange-side undo. The operation runs on a
+       background thread, so the canvas stays responsive even if the
+       table is large.
    * - Dataset info
      - Read-only block under the combo: save timestamp, row/column
        counts and the original class column recorded by **Save to DB**.
@@ -60,7 +72,9 @@ Controls
        choice, (2) the ``class_name`` stored in the ``datasets``
        metadata, (3) ``(no class)`` if none of the above apply.
    * - Load
-     - Triggers the actual download.
+     - Triggers the actual download. Skipped automatically on the
+       first connection after a workflow reopen if the persisted
+       dataset name is still available (see *Auto-load* below).
 
 How it Works
 ------------
@@ -87,6 +101,28 @@ columns stay in ``domain.attributes``.
 While any worker runs, the form controls (database type, connection
 fields, **Connect**, **Load**, dataset and class combos) are
 temporarily disabled and the status label keeps the user informed.
+
+Auto-load
+---------
+
+When you reopen a workflow that already had a Load from DB widget with
+a saved ``selected_dataset``, the widget fires Load automatically the
+first time the dataset listing comes back successfully. The data flows
+out of the **Data** output without a single click, mirroring how Orange
+treats sources like **File** and **Datasets**.
+
+Subtleties:
+
+- Auto-load is a *one-shot* per widget lifetime. Manually clicking
+  **Refresh** clears the pending flag, so a Refresh never surprises
+  the user by loading something behind their back.
+- If the persisted dataset no longer exists on the server (deleted
+  from outside, or the registry was wiped), the flag is cleared and
+  the widget just shows the available list — no error.
+- If a different backend or set of credentials is restored, the user
+  still has to click **Connect** explicitly, just like in earlier
+  versions; auto-load happens *after* the first successful connection
+  + listing.
 
 Workflow Persistence
 --------------------

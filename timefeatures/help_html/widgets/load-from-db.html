@@ -148,9 +148,23 @@ host/db (N datasets)”, “Loaded &lt;name&gt; (N rows)”), error
 (“Connection failed: …”, “Load failed: …”).</p></td>
 </tr>
 <tr class="row-even"><td><p>Dataset</p></td>
-<td><p>Combo populated from <code class="docutils literal notranslate"><span class="pre">SELECT</span> <span class="pre">*</span> <span class="pre">FROM</span> <span class="pre">datasets</span> <span class="pre">ORDER</span> <span class="pre">BY</span>
-<span class="pre">datetime</span> <span class="pre">DESC</span></code>. The most recent upload comes first; the last
-choice is restored when reopening a workflow.</p></td>
+<td><p>Searchable combo populated from <code class="docutils literal notranslate"><span class="pre">SELECT</span> <span class="pre">*</span> <span class="pre">FROM</span> <span class="pre">datasets</span> <span class="pre">ORDER</span>
+<span class="pre">BY</span> <span class="pre">datetime</span> <span class="pre">DESC</span></code>. The most recent upload comes first; the
+last choice is restored when reopening a workflow. Type to
+filter the visible items — handy when the registry grows large.</p></td>
+</tr>
+<tr class="row-odd"><td><p>↻ (Refresh)</p></td>
+<td><p>Small button to the right of the Dataset combo. Re-runs the
+list query without dropping the connection. Useful if another
+Orange canvas (or a parallel tool) just published a new
+dataset while this widget was open.</p></td>
+</tr>
+<tr class="row-even"><td><p>Delete</p></td>
+<td><p>Drops the currently selected dataset’s table from the database
+and removes its row in <code class="docutils literal notranslate"><span class="pre">datasets</span></code>. Gated by a confirmation
+dialog — there is no Orange-side undo. The operation runs on a
+background thread, so the canvas stays responsive even if the
+table is large.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Dataset info</p></td>
 <td><p>Read-only block under the combo: save timestamp, row/column
@@ -163,7 +177,9 @@ choice, (2) the <code class="docutils literal notranslate"><span class="pre">cla
 metadata, (3) <code class="docutils literal notranslate"><span class="pre">(no</span> <span class="pre">class)</span></code> if none of the above apply.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Load</p></td>
-<td><p>Triggers the actual download.</p></td>
+<td><p>Triggers the actual download. Skipped automatically on the
+first connection after a workflow reopen if the persisted
+dataset name is still available (see <em>Auto-load</em> below).</p></td>
 </tr>
 </tbody>
 </table>
@@ -189,6 +205,27 @@ columns stay in <code class="docutils literal notranslate"><span class="pre">dom
 <p>While any worker runs, the form controls (database type, connection
 fields, <strong>Connect</strong>, <strong>Load</strong>, dataset and class combos) are
 temporarily disabled and the status label keeps the user informed.</p>
+</section>
+<section id="auto-load">
+<h2>Auto-load<a class="headerlink" href="#auto-load" title="Link to this heading">¶</a></h2>
+<p>When you reopen a workflow that already had a Load from DB widget with
+a saved <code class="docutils literal notranslate"><span class="pre">selected_dataset</span></code>, the widget fires Load automatically the
+first time the dataset listing comes back successfully. The data flows
+out of the <strong>Data</strong> output without a single click, mirroring how Orange
+treats sources like <strong>File</strong> and <strong>Datasets</strong>.</p>
+<p>Subtleties:</p>
+<ul class="simple">
+<li><p>Auto-load is a <em>one-shot</em> per widget lifetime. Manually clicking
+<strong>Refresh</strong> clears the pending flag, so a Refresh never surprises
+the user by loading something behind their back.</p></li>
+<li><p>If the persisted dataset no longer exists on the server (deleted
+from outside, or the registry was wiped), the flag is cleared and
+the widget just shows the available list — no error.</p></li>
+<li><p>If a different backend or set of credentials is restored, the user
+still has to click <strong>Connect</strong> explicitly, just like in earlier
+versions; auto-load happens <em>after</em> the first successful connection
++ listing.</p></li>
+</ul>
 </section>
 <section id="workflow-persistence">
 <h2>Workflow Persistence<a class="headerlink" href="#workflow-persistence" title="Link to this heading">¶</a></h2>

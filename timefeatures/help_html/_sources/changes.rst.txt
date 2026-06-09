@@ -22,6 +22,22 @@ Unreleased
 - Workflow-persisted settings: ``selected_dataset`` and
   ``selected_class`` are ``Setting(..., schema_only=True)``, restored
   as soon as the connection comes back up on reload.
+- The Dataset combo is a ``ComboBoxSearch`` — type to filter when the
+  registry gets large.
+- ``↻`` button next to the Dataset combo re-runs the listing without
+  dropping the connection (handy when something else just published a
+  new dataset). Auto-load is suppressed on Refresh so the user never
+  gets a Load they didn't ask for.
+- ``Delete`` button drops the selected dataset's table and removes
+  its row in ``datasets``. Runs through a ``_DeleteDatasetWorker`` on
+  a background thread, guarded by a confirmation dialog. Idempotent:
+  re-deleting a missing table is a no-op thanks to
+  ``DROP TABLE IF EXISTS``.
+- **Auto-load** on workflow reopen: if the persisted
+  ``selected_dataset`` is still on the server when the connection
+  succeeds and the listing returns, Load fires automatically — the
+  data flows out without a single click. The flag is cleared on
+  Refresh and on Delete to avoid surprises.
 
 **Variable Dependency Graph**
 

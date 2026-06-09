@@ -114,6 +114,22 @@ thread.</p></li>
 <li><p>Workflow-persisted settings: <code class="docutils literal notranslate"><span class="pre">selected_dataset</span></code> and
 <code class="docutils literal notranslate"><span class="pre">selected_class</span></code> are <code class="docutils literal notranslate"><span class="pre">Setting(...,</span> <span class="pre">schema_only=True)</span></code>, restored
 as soon as the connection comes back up on reload.</p></li>
+<li><p>The Dataset combo is a <code class="docutils literal notranslate"><span class="pre">ComboBoxSearch</span></code> — type to filter when the
+registry gets large.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">↻</span></code> button next to the Dataset combo re-runs the listing without
+dropping the connection (handy when something else just published a
+new dataset). Auto-load is suppressed on Refresh so the user never
+gets a Load they didn’t ask for.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Delete</span></code> button drops the selected dataset’s table and removes
+its row in <code class="docutils literal notranslate"><span class="pre">datasets</span></code>. Runs through a <code class="docutils literal notranslate"><span class="pre">_DeleteDatasetWorker</span></code> on
+a background thread, guarded by a confirmation dialog. Idempotent:
+re-deleting a missing table is a no-op thanks to
+<code class="docutils literal notranslate"><span class="pre">DROP</span> <span class="pre">TABLE</span> <span class="pre">IF</span> <span class="pre">EXISTS</span></code>.</p></li>
+<li><p><strong>Auto-load</strong> on workflow reopen: if the persisted
+<code class="docutils literal notranslate"><span class="pre">selected_dataset</span></code> is still on the server when the connection
+succeeds and the listing returns, Load fires automatically — the
+data flows out without a single click. The flag is cleared on
+Refresh and on Delete to avoid surprises.</p></li>
 </ul>
 <p><strong>Variable Dependency Graph</strong></p>
 <ul class="simple">

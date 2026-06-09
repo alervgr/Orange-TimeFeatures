@@ -6,7 +6,7 @@ import Orange
 import Orange.data.pandas_compat as pc
 from AnyQt.QtCore import QObject, QThread, pyqtSignal
 from AnyQt.QtWidgets import (
-    QComboBox, QGridLayout, QLabel, QPushButton,
+    QComboBox, QGridLayout, QHBoxLayout, QLabel, QMessageBox, QPushButton,
 )
 
 from Orange.data import Domain
@@ -15,6 +15,7 @@ from Orange.widgets.settings import Setting
 from Orange.widgets.utils.owbasesql import OWBaseSql
 from Orange.widgets.utils.widgetpreview import WidgetPreview
 from Orange.widgets.widget import Msg, Output, OWWidget
+from orangewidget.utils.combobox import ComboBoxSearch
 
 from timefeatures.widgets.owsavetodb import (
     CONNECTION_STATUS_STYLES,
@@ -131,6 +132,46 @@ class _LoadTableWorker(QObject):
                 engine.dispose()
 
 
+class _DeleteDatasetWorker(QObject):
+    """Drop a dataset table and remove its ``datasets`` metadata row on a
+    background thread, so the GUI stays responsive even on slow DROPs."""
+
+    finished = pyqtSignal(str)
+    failed = pyqtSignal(str)
+
+    def __init__(self, dialect, connection_params, table_name):
+        super().__init__()
+        self.dialect = dialect
+        self.connection_params = connection_params
+        self.table_name = table_name
+
+    def run(self):
+        engine = None
+        try:
+            _, _, text, _ = _sqlalchemy_modules()
+            engine = _create_sqlalchemy_engine(
+                self.dialect, **self.connection_params
+            )
+            qi = self.dialect.quote_ident
+            with engine.begin() as connection:
+                connection.execute(
+                    text(f"DROP TABLE IF EXISTS {qi(self.table_name)}")
+                )
+                connection.execute(
+                    text(
+                        f"DELETE FROM {qi('datasets')} "
+                        f"WHERE {qi('name')} = :name"
+                    ),
+                    {"name": self.table_name},
+                )
+            self.finished.emit(self.table_name)
+        except Exception as ex:  # pylint: disable=broad-except
+            self.failed.emit(str(ex))
+        finally:
+            if engine is not None:
+                engine.dispose()
+
+
 class owloadfromdb(OWBaseSql, OWWidget):
     name = "Load from DB"
     description = (
@@ -175,12 +216,22 @@ class owloadfromdb(OWBaseSql, OWWidget):
         self.class_combo = None
         self.dataset_info_label = None
         self.btn_loaddata = None
+        self.btn_refresh = None
+        self.btn_delete = None
         self.data = None
         self._busy = False
         self._available = {}
         self._thread = None
         self._worker = None
+        # Marked True after ``super().__init__()`` if the workflow
+        # restored a persisted ``selected_dataset`` — that triggers a
+        # one-shot ``load_data()`` once the first dataset listing comes
+        # back, so reopening a saved workflow lands directly on the
+        # data without the user having to click Load.
+        self._auto_load_pending = False
         super().__init__()
+        if self.selected_dataset:
+            self._auto_load_pending = True
 
     # ------------------------------------------------------------------ #
     #  Dialect & connection
@@ -217,27 +268,74 @@ class owloadfromdb(OWBaseSql, OWWidget):
     def _add_dataset_controls(self):
         layout = QGridLayout()
         layout.setSpacing(3)
+        # Col 1 absorbs any extra horizontal space so the combo grows and
+        # the buttons stay flush to the right edge instead of clumping
+        # together in the middle.
+        layout.setColumnStretch(1, 1)
         gui.widgetBox(self.controlArea, orientation=layout, box="Dataset")
 
+        # Row 0: Dataset combo (searchable) + Refresh + Delete, packed in
+        # a horizontal sub-layout so the combo stretches and the two
+        # buttons keep their natural width with visible spacing between
+        # them.
         layout.addWidget(QLabel("Dataset:"), 0, 0)
-        self.datasets_combo = QComboBox()
+
+        # ``setSpacing(0)`` + explicit ``addSpacing`` calls so the gaps
+        # between combo / ↻ / Delete are big enough to read on macOS,
+        # where the native button chrome bleeds into the neighbour and
+        # makes a 6 px gap look like the widgets are touching.
+        dataset_row = QHBoxLayout()
+        dataset_row.setSpacing(0)
+        dataset_row.setContentsMargins(0, 0, 0, 0)
+
+        # ``ComboBoxSearch`` is a drop-in QComboBox subclass that adds a
+        # filter box in the popup — handy when there are dozens of saved
+        # datasets to scroll through.
+        self.datasets_combo = ComboBoxSearch()
         self.datasets_combo.setEnabled(False)
         self.datasets_combo.currentTextChanged.connect(self._on_dataset_changed)
-        layout.addWidget(self.datasets_combo, 0, 1)
+        dataset_row.addWidget(self.datasets_combo, 1)  # stretch=1: take the slack
 
+        dataset_row.addSpacing(20)
+
+        self.btn_refresh = QPushButton("↻")
+        self.btn_refresh.setToolTip(
+            "Reload the list of datasets registered on the server."
+        )
+        self.btn_refresh.setFixedWidth(44)
+        self.btn_refresh.setEnabled(False)
+        self.btn_refresh.clicked.connect(self._refresh_datasets)
+        dataset_row.addWidget(self.btn_refresh)
+
+        dataset_row.addSpacing(20)
+
+        self.btn_delete = QPushButton("Delete")
+        self.btn_delete.setToolTip(
+            "Drop the selected dataset's table and remove it from the "
+            "datasets registry."
+        )
+        self.btn_delete.setEnabled(False)
+        self.btn_delete.clicked.connect(self._delete_dataset)
+        dataset_row.addWidget(self.btn_delete)
+
+        layout.addLayout(dataset_row, 0, 1, 1, 3)
+
+        # Row 1: Info label spans all four columns.
         self.dataset_info_label = QLabel(
             "Connect to a database to list available datasets."
         )
         self.dataset_info_label.setWordWrap(True)
-        layout.addWidget(self.dataset_info_label, 1, 0, 1, 2)
+        layout.addWidget(self.dataset_info_label, 1, 0, 1, 4)
 
+        # Row 2: Class column selector spans cols 1-3.
         layout.addWidget(QLabel("Class column:"), 2, 0)
         self.class_combo = QComboBox()
         self.class_combo.setEnabled(False)
         self.class_combo.addItem(_NO_CLASS_LABEL)
         self.class_combo.currentTextChanged.connect(self._on_class_changed)
-        layout.addWidget(self.class_combo, 2, 1)
+        layout.addWidget(self.class_combo, 2, 1, 1, 3)
 
+        # Row 3: Load button right-aligned.
         self.btn_loaddata = QPushButton(
             "Load",
             toolTip="Load the selected dataset into Orange.",
@@ -245,7 +343,7 @@ class owloadfromdb(OWBaseSql, OWWidget):
         )
         self.btn_loaddata.clicked.connect(self.load_data)
         self.btn_loaddata.setEnabled(False)
-        layout.addWidget(self.btn_loaddata, 3, 1)
+        layout.addWidget(self.btn_loaddata, 3, 3)
 
     def _set_connection_status(self, message, state="neutral"):
         if self.connection_status_label is None:
@@ -278,6 +376,10 @@ class owloadfromdb(OWBaseSql, OWWidget):
         self.class_combo.setEnabled(False)
 
         self.btn_loaddata.setEnabled(False)
+        if self.btn_refresh is not None:
+            self.btn_refresh.setEnabled(False)
+        if self.btn_delete is not None:
+            self.btn_delete.setEnabled(False)
         self.dataset_info_label.setText(
             "Connect to a database to list available datasets."
         )
@@ -360,9 +462,18 @@ class owloadfromdb(OWBaseSql, OWWidget):
             self.datasets_combo.addItem(ds["name"])
         self.datasets_combo.blockSignals(False)
 
+        # Refresh is always usable once we've successfully listed the
+        # datasets table — even with zero rows, the user might want to
+        # re-poll after a parallel Save to DB.
+        self.btn_refresh.setEnabled(True)
+
         if not datasets:
             self.Warning.no_datasets()
             self.datasets_combo.setEnabled(False)
+            self.btn_delete.setEnabled(False)
+            # Cancel any pending auto-load: the saved dataset doesn't
+            # exist on the server (probably got dropped from outside).
+            self._auto_load_pending = False
             self._set_connection_status(
                 f"Connected to {self.selected_backend} — no datasets found",
                 "neutral",
@@ -370,8 +481,11 @@ class owloadfromdb(OWBaseSql, OWWidget):
             return
 
         self.datasets_combo.setEnabled(True)
+        self.btn_delete.setEnabled(True)
+
         names = [ds["name"] for ds in datasets]
-        if self.selected_dataset in names:
+        persisted_was_found = self.selected_dataset in names
+        if persisted_was_found:
             self.datasets_combo.setCurrentText(self.selected_dataset)
         else:
             self.datasets_combo.setCurrentIndex(0)
@@ -388,6 +502,14 @@ class owloadfromdb(OWBaseSql, OWWidget):
             "success",
         )
 
+        # Auto-load on workflow open: if a persisted dataset just came
+        # back successfully, fire Load now so the user lands on the
+        # data without an extra click. Only honoured once per widget
+        # lifetime — manual Refreshes clear the flag.
+        if self._auto_load_pending and persisted_was_found:
+            self._auto_load_pending = False
+            self.load_data()
+
     def _on_datasets_failed(self, message):
         self._busy = False
         self._set_connection_status(
@@ -398,6 +520,82 @@ class owloadfromdb(OWBaseSql, OWWidget):
     def _on_thread_finished(self):
         self._thread = None
         self._worker = None
+
+    # ------------------------------------------------------------------ #
+    #  Refresh / Delete
+    # ------------------------------------------------------------------ #
+    def _refresh_datasets(self):
+        """Re-list the datasets without dropping the connection.
+
+        Distinct from the connection flow because the auto-load flag is
+        cleared first — Refresh is an explicit "show me the latest" and
+        should not surprise the user by loading a dataset behind their
+        back.
+        """
+        if self._busy:
+            return
+        self._auto_load_pending = False
+        self._populate_datasets()
+
+    def _delete_dataset(self):
+        """Drop the selected dataset's table and unregister it. Always
+        gated by a confirmation dialog — there's no Orange-side undo."""
+        if self._busy or not self.selected_dataset:
+            return
+
+        target = self.selected_dataset
+        answer = QMessageBox.question(
+            self,
+            "Delete dataset?",
+            (
+                f"This will drop the table <b>{target}</b> from the "
+                f"database and remove its entry from the "
+                f"<code>datasets</code> registry.<br><br>"
+                f"This action cannot be undone."
+            ),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+
+        self._busy = True
+        self._set_load_controls_enabled(False)
+        self._set_connection_status(f"Deleting {target}...", "neutral")
+
+        self._thread = QThread(self)
+        self._worker = _DeleteDatasetWorker(
+            dialect=self.dialect,
+            connection_params=self._connection_params(),
+            table_name=target,
+        )
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.finished.connect(self._on_delete_finished)
+        self._worker.failed.connect(self._on_delete_failed)
+        self._worker.finished.connect(lambda *_: self._thread.quit())
+        self._worker.failed.connect(lambda *_: self._thread.quit())
+        self._thread.finished.connect(self._worker.deleteLater)
+        self._thread.finished.connect(self._thread.deleteLater)
+        self._thread.finished.connect(self._on_thread_finished)
+        self._thread.start()
+
+    def _on_delete_finished(self, table_name):
+        self._busy = False
+        self._set_load_controls_enabled(True)
+        self._set_connection_status(f"Deleted {table_name}.", "success")
+        # The persisted selection no longer exists; reset the persisted
+        # picks and pull the fresh list so the combo reflects reality.
+        self.selected_dataset = ""
+        self.selected_class = ""
+        self._auto_load_pending = False
+        self._populate_datasets()
+
+    def _on_delete_failed(self, message):
+        self._busy = False
+        self._set_load_controls_enabled(True)
+        self.Error.connection(message)
+        self._set_connection_status(f"Delete failed: {message}", "error")
 
     # ------------------------------------------------------------------ #
     #  Per-dataset reaction
@@ -535,6 +733,7 @@ class owloadfromdb(OWBaseSql, OWWidget):
             self.connectbutton, self.btn_loaddata, self.backendcombo,
             self.servertext, self.databasetext, self.usernametext,
             self.passwordtext, self.datasets_combo, self.class_combo,
+            self.btn_refresh, self.btn_delete,
         ):
             if widget is not None:
                 widget.setEnabled(enabled)
