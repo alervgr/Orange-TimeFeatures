@@ -81,10 +81,19 @@ Project
 Building this documentation
 ---------------------------
 
+**Development build** (for previewing locally):
+
 .. code-block:: bash
 
    pip install -e ".[docs]"
    python -m sphinx -b html docs docs/build/html
+
+**In-app help** (bundled with the wheel so Orange's Help panel works
+offline):
+
+.. code-block:: bash
+
+   python -m sphinx -b html docs timefeatures/help_html
 
 The HTML build is also bundled with the wheel so Orange's in-app help
 panel can resolve every widget's *Help* action without internet

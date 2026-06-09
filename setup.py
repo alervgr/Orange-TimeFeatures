@@ -1,7 +1,17 @@
 from setuptools import setup
+from pathlib import Path
 
-with open('README.md', 'r', encoding='utf-8') as f:
+HERE = Path(__file__).resolve().parent
+
+with open(HERE / 'README.md', 'r', encoding='utf-8') as f:
     ABOUT = f.read()
+
+# Read version from the canonical location without importing the package
+# (which would trigger Qt/Orange imports during install).
+_version_globals = {}
+exec((HERE / "timefeatures" / "__version__.py").read_text(encoding="utf-8"), _version_globals)
+VERSION = _version_globals["__version__"]
+
 
 CLASSIFIERS = [
     'Development Status :: 4 - Beta',
@@ -41,7 +51,7 @@ setup(name="TimeFeatures",
               "Sphinx>=7.0",
           ],
       },
-      version="2.1.0",
+      version=VERSION,
       author="Alejandro Rivas García",
       author_email="alejandrorivasgarcia@gmail.com",
       keywords=[

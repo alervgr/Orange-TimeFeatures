@@ -10,7 +10,11 @@ sys.path.insert(0, str(ROOT))
 project = "TimeFeatures"
 author = "Alejandro Rivas Garcia"
 copyright = "2026, Alejandro Rivas Garcia"
-release = "1.0.18"
+
+# Read version from the single source of truth.
+_version_globals = {}
+exec((ROOT / "timefeatures" / "__version__.py").read_text(encoding="utf-8"), _version_globals)
+release = _version_globals["__version__"]
 version = ".".join(release.split(".")[:2])
 
 # -- General configuration ------------------------------------------------
@@ -47,7 +51,7 @@ html_theme_options = {
     "description": (
         "Time-series feature engineering for Orange3: build derived "
         "variables, visualise their dependencies, and persist data to "
-        "PostgreSQL."
+        "PostgreSQL or MySQL."
     ),
     "github_user": "alervgr",
     "github_repo": "Orange-TimeFeatures",

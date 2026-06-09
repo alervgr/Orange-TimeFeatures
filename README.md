@@ -1,12 +1,10 @@
-Orange3 TimeFeatures
-===============
+# Orange3 TimeFeatures
 
-Timefeatures add-on for [Orange] 3 data mining software for generating synthetic data using datasets with time series, generating graphs of relationships between the generated variables and includes another widget to save the data and configuration tables in a database.
+TimeFeatures is an add-on for [Orange] 3 data mining software for generating synthetic data using datasets with time series, generating graphs of relationships between the generated variables, and includes widgets to save and load data and configuration tables from a database.
 
 [Orange]: https://orangedatamining.com/
 
-Installation
-------------
+## Installation
 
 ### Orange add-on installer
 
@@ -20,20 +18,9 @@ To install the add-on with pip use
 
     pip install TimeFeatures
 
-To install the add-on from source, run
-
-    python setup.py install
-
-To register this add-on with Orange, but keep the code in the development directory (do not copy it to 
-Python's site-packages directory), run
-
-    python setup.py develop
-
-You can also run
+To install the add-on from source in editable mode, run
 
     pip install -e .
-
-which is sometimes preferable as you can *pip uninstall* packages later.
 
 ### Anaconda
 
@@ -53,8 +40,7 @@ If using Anaconda Python distribution, simply run
 * PyMySQL>=1.0.0
 * Orange3-Network>=1.8.0
 
-Usage
------
+## Usage
 
 After the installation, the widgets from this add-on are registered with Orange. To run Orange from the terminal,
 use
@@ -67,21 +53,25 @@ or
 
 New widgets are in the toolbox bar under Time-Features section.
 
-Documentation
--------------
+## Documentation
 
 The add-on includes Sphinx documentation for each widget. Orange resolves the
 local HTML pages through its internal Help panel, not through an internet URL.
 To rebuild the documentation locally, run
 
     pip install -e ".[docs]"
+    python -m sphinx -b html docs docs/build/html
+
+The bundled in-app help is pre-built under `timefeatures/help_html/`. To
+regenerate it (e.g. after editing the `.rst` files), run
+
     python -m sphinx -b html docs timefeatures/help_html
 
 Use the widget help action in Orange to open the corresponding page inside the
 Orange Help window.
 
-Workflow Example
------
+## Workflow Example
+
 This is an example of how you can use this add-on.
 
 ![Workflow](https://github.com/alervgr/Orange-TimeFeatures/blob/main/imgs/workflow.png?raw=true)
