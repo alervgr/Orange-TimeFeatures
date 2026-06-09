@@ -1,10 +1,20 @@
 Changelog
 =========
 
-2.1.1 — 2026-06-09
+2.2.0 — 2026-06-09
 -------------------
 
-**Load from DB (new widget)**
+**UX & UI Improvements**
+
+- *New (Load from DB / Save to DB):* **Cancel button**. Long-running database operations (both table downloads and uploads) can now be aborted mid-flight. For uploads, SQLAlchemy automatically issues a ``ROLLBACK``, preventing partial or corrupted data from being written.
+- *New (Load from DB):* **Data Preview**. When a dataset is selected from the dropdown, the widget now instantly fetches the first 50 rows (``LIMIT 50``) and displays them in an embedded ``QTableWidget``. This provides immediate visual confirmation of the dataset contents without having to pull the entire table into memory first.
+- *Improvement (Load from DB):* **Smooth progress reporting**. The background reader now streams data in chunks (``chunksize=1000``) rather than running a single monolithic ``read_sql`` query. The progress bar updates continuously as rows arrive, preventing the UI from appearing frozen during large transfers.
+- *UX:* Improved button alignment and spacing in both database widgets to avoid visual overlap. In ``Save to DB``, the Cancel button is stacked logically above the Save button for improved space usage.
+
+2.1.1
+-------------------
+
+**Load from DB (new widget)**s
 
 - Lists every dataset registered in the ``datasets`` metadata table
   via SQLAlchemy and pulls the selected one back into Orange as an

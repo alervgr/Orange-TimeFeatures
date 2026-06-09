@@ -9,7 +9,7 @@
     <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
     <link rel="stylesheet" type="text/css" href="_static/basic.css?v=686e5160" />
     <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=f6a572b4" />
-    <script src="_static/documentation_options.js?v=20623aea"></script>
+    <script src="_static/documentation_options.js?v=b21de401"></script>
     <script src="_static/doctools.js?v=9bcbadda"></script>
     <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <link rel="index" title="Index" href="genindex.html" />
@@ -95,7 +95,17 @@
   <section id="changelog">
 <h1>Changelog<a class="headerlink" href="#changelog" title="Link to this heading">¶</a></h1>
 <section id="id1">
-<h2>2.1.1 — 2026-06-09<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h2>
+<h2>2.2.0 — 2026-06-09<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h2>
+<p><strong>UX &amp; UI Improvements</strong></p>
+<ul class="simple">
+<li><p><em>New (Load from DB / Save to DB):</em> <strong>Cancel button</strong>. Long-running database operations (both table downloads and uploads) can now be aborted mid-flight. For uploads, SQLAlchemy automatically issues a <code class="docutils literal notranslate"><span class="pre">ROLLBACK</span></code>, preventing partial or corrupted data from being written.</p></li>
+<li><p><em>New (Load from DB):</em> <strong>Data Preview</strong>. When a dataset is selected from the dropdown, the widget now instantly fetches the first 50 rows (<code class="docutils literal notranslate"><span class="pre">LIMIT</span> <span class="pre">50</span></code>) and displays them in an embedded <code class="docutils literal notranslate"><span class="pre">QTableWidget</span></code>. This provides immediate visual confirmation of the dataset contents without having to pull the entire table into memory first.</p></li>
+<li><p><em>Improvement (Load from DB):</em> <strong>Smooth progress reporting</strong>. The background reader now streams data in chunks (<code class="docutils literal notranslate"><span class="pre">chunksize=1000</span></code>) rather than running a single monolithic <code class="docutils literal notranslate"><span class="pre">read_sql</span></code> query. The progress bar updates continuously as rows arrive, preventing the UI from appearing frozen during large transfers.</p></li>
+<li><p><em>UX:</em> Improved button alignment and spacing in both database widgets to avoid visual overlap. In <code class="docutils literal notranslate"><span class="pre">Save</span> <span class="pre">to</span> <span class="pre">DB</span></code>, the Cancel button is stacked logically above the Save button for improved space usage.</p></li>
+</ul>
+</section>
+<section id="id2">
+<h2>2.1.1 — 2026-06-09<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h2>
 <p><strong>Load from DB (new widget)</strong></p>
 <ul class="simple">
 <li><p>Lists every dataset registered in the <code class="docutils literal notranslate"><span class="pre">datasets</span></code> metadata table
