@@ -7,6 +7,11 @@ connects to a SQL database, lists the datasets previously persisted by
 ``Table`` — optionally marking the class column on the fly so no
 **Select Columns** widget is needed downstream.
 
+.. figure:: ../../imgs/widgets/owloadfromdb.png
+   :alt: Load from DB widget interface.
+
+   The Load from DB widget.
+
 Inputs
 ------
 

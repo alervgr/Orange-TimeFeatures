@@ -6,6 +6,11 @@ categorical or text variables from existing ones via Python-style
 expressions and a family of time-window functions. It is the central
 widget for time-series feature engineering inside |addon|.
 
+.. figure:: ../../imgs/widgets/owtimefeaturesconstructor.png
+   :alt: Time Features Constructor widget interface.
+
+   The Time Features Constructor widget.
+
 Inputs
 ------
 

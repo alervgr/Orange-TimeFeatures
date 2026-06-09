@@ -1,8 +1,8 @@
 Changelog
 =========
 
-Unreleased
-----------
+2.1.1 — 2026-06-09
+-------------------
 
 **Load from DB (new widget)**
 

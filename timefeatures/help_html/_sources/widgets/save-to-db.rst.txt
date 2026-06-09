@@ -7,6 +7,11 @@ database. Two dialects are supported out of the box:
 - **PostgreSQL** — through ``psycopg2``.
 - **MySQL** — through ``pymysql``.
 
+.. figure:: ../../imgs/widgets/owsavetodb.png
+   :alt: Save to DB widget interface.
+
+   The Save to DB widget.
+
 Both drivers are reached via **SQLAlchemy**, which keeps the SQL
 generation, identifier quoting and type rendering dialect-agnostic. The
 actual upload uses a `pandas <https://pandas.pydata.org/>`_ DataFrame

@@ -7,6 +7,11 @@ their expressions. Edge weights reflect the time-window size used by the
 expression, making it easy to spot which derived features have the
 widest temporal footprint.
 
+.. figure:: ../../imgs/widgets/owvariabledependencygraph.png
+   :alt: Variable Dependency Graph widget interface.
+
+   The Variable Dependency Graph widget.
+
 Inputs
 ------
 

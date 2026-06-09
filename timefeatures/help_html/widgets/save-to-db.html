@@ -102,6 +102,12 @@ database. Two dialects are supported out of the box:</p>
 <li><p><strong>PostgreSQL</strong> — through <code class="docutils literal notranslate"><span class="pre">psycopg2</span></code>.</p></li>
 <li><p><strong>MySQL</strong> — through <code class="docutils literal notranslate"><span class="pre">pymysql</span></code>.</p></li>
 </ul>
+<figure class="align-default" id="id1">
+<img alt="Save to DB widget interface." src="../_images/owsavetodb.png" />
+<figcaption>
+<p><span class="caption-text">The Save to DB widget.</span><a class="headerlink" href="#id1" title="Link to this image">¶</a></p>
+</figcaption>
+</figure>
 <p>Both drivers are reached via <strong>SQLAlchemy</strong>, which keeps the SQL
 generation, identifier quoting and type rendering dialect-agnostic. The
 actual upload uses a <a class="reference external" href="https://pandas.pydata.org/">pandas</a> DataFrame
