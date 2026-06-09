@@ -31,6 +31,17 @@ Unreleased
   reference the dependency. Plain (non-temporal) references default to
   weight ``1``. The weights live in ``network.edges[0].edges.data``
   and are consumable by any downstream Network widget.
+- *New:* the graph is now **directed** (``DirectedEdges``). Previously
+  the sparse matrix was passed straight to ``Network`` which auto-wrapped
+  it as ``UndirectedEdges`` — a latent bug since A→B is not the same as
+  B→A in a dependency graph.
+- *New:* nodes carry an extra ``expression`` meta (literal expression
+  text, empty for original variables) so the Network Explorer can show
+  the formula as the node label.
+- *New:* ``Warning.no_derived`` fires when every input row is an
+  original variable — usually a sign the user wired the data output
+  of Time Features Constructor instead of the variable-definitions
+  one.
 - Refactor: flattened the ``from_row_col`` / ``grafo`` decorator pattern
   into a single, documented ``build_dependency_network`` function.
 - Performance: O(n³) → O(n²) by precomputing a ``name → index`` map and

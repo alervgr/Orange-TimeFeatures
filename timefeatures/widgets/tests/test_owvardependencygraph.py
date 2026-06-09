@@ -274,5 +274,76 @@ class TestEdgeWeights(unittest.TestCase):
         )
 
 
+# --------------------------------------------------------------------- #
+#  Network structure — directed graph + node "expression" meta
+# --------------------------------------------------------------------- #
+class TestNetworkStructure(unittest.TestCase):
+    def test_edges_are_directed(self):
+        table = make_config([
+            ("X1", "shift(X2,-5)"),
+            ("X2", None),
+        ])
+        net = build_dependency_network(table)
+        # The Network Explorer's arrowheads only show up when the edge
+        # set is directed.
+        self.assertTrue(net.edges[0].directed)
+
+    def test_node_metadata_includes_expression(self):
+        table = make_config([
+            ("X1", "shift(X2,-5)"),
+            ("X2", None),
+        ])
+        net = build_dependency_network(table)
+        # `expression` is the literal text for derived variables and
+        # empty for originals.
+        exprs = net.nodes.get_column("expression")
+        names = net.nodes.get_column("var_name")
+        by_name = dict(zip([str(n) for n in names], [str(e) for e in exprs]))
+        self.assertEqual(by_name["X1"], "shift(X2,-5)")
+        self.assertEqual(by_name["X2"], "")
+
+
+# --------------------------------------------------------------------- #
+#  Widget — Warning.no_derived
+# --------------------------------------------------------------------- #
+class TestNoDerivedWarning(unittest.TestCase):
+    """Smoke-test the widget-level warning that fires when every input
+    row is an original variable."""
+
+    def _make_widget(self):
+        # Lazy import: WidgetTest pulls a lot of Qt machinery.
+        from Orange.widgets.tests.base import WidgetTest
+        from timefeatures.widgets.owvardependencygraph import (
+            owvardependencygraph,
+        )
+
+        class _T(WidgetTest):
+            def runTest(self):
+                pass
+
+        harness = _T()
+        harness.setUpClass()
+        widget = harness.create_widget(owvardependencygraph)
+        return harness, widget
+
+    def test_warns_when_every_row_is_original(self):
+        harness, widget = self._make_widget()
+        try:
+            table = make_config([("X1", None), ("X2", None)])
+            harness.send_signal(widget.Inputs.data, table)
+            self.assertTrue(widget.Warning.no_derived.is_shown())
+        finally:
+            harness.tearDownClass()
+
+    def test_no_warning_when_any_derived(self):
+        harness, widget = self._make_widget()
+        try:
+            table = make_config([("X1", "X2 + 1"), ("X2", None)])
+            harness.send_signal(widget.Inputs.data, table)
+            self.assertFalse(widget.Warning.no_derived.is_shown())
+        finally:
+            harness.tearDownClass()
+
+
 if __name__ == "__main__":
     unittest.main()

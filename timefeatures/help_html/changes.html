@@ -123,6 +123,17 @@ as soon as the connection comes back up on reload.</p></li>
 reference the dependency. Plain (non-temporal) references default to
 weight <code class="docutils literal notranslate"><span class="pre">1</span></code>. The weights live in <code class="docutils literal notranslate"><span class="pre">network.edges[0].edges.data</span></code>
 and are consumable by any downstream Network widget.</p></li>
+<li><p><em>New:</em> the graph is now <strong>directed</strong> (<code class="docutils literal notranslate"><span class="pre">DirectedEdges</span></code>). Previously
+the sparse matrix was passed straight to <code class="docutils literal notranslate"><span class="pre">Network</span></code> which auto-wrapped
+it as <code class="docutils literal notranslate"><span class="pre">UndirectedEdges</span></code> — a latent bug since A→B is not the same as
+B→A in a dependency graph.</p></li>
+<li><p><em>New:</em> nodes carry an extra <code class="docutils literal notranslate"><span class="pre">expression</span></code> meta (literal expression
+text, empty for original variables) so the Network Explorer can show
+the formula as the node label.</p></li>
+<li><p><em>New:</em> <code class="docutils literal notranslate"><span class="pre">Warning.no_derived</span></code> fires when every input row is an
+original variable — usually a sign the user wired the data output
+of Time Features Constructor instead of the variable-definitions
+one.</p></li>
 <li><p>Refactor: flattened the <code class="docutils literal notranslate"><span class="pre">from_row_col</span></code> / <code class="docutils literal notranslate"><span class="pre">grafo</span></code> decorator pattern
 into a single, documented <code class="docutils literal notranslate"><span class="pre">build_dependency_network</span></code> function.</p></li>
 <li><p>Performance: O(n³) → O(n²) by precomputing a <code class="docutils literal notranslate"><span class="pre">name</span> <span class="pre">→</span> <span class="pre">index</span></code> map and

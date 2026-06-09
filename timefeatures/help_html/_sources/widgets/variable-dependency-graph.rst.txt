@@ -33,9 +33,9 @@ Outputs
      - Description
    * - Network
      - ``orangecontrib.network.Network``
-     - A directed weighted graph. ``network.edges[0].edges`` is the
-       sparse adjacency matrix; its non-zero values carry the edge
-       weights described below.
+     - A **directed** weighted graph. ``network.edges[0]`` is a
+       ``DirectedEdges`` instance whose sparse adjacency matrix carries
+       the per-edge weights described in *Edge Weights* below.
 
 How It Works
 ------------
@@ -118,6 +118,11 @@ downstream styling:
    * - ``var_type``
      - Discrete
      - ``Derived`` (has an expression) or ``Original`` (source feature).
+   * - ``expression``
+     - String
+     - The literal expression text for derived variables; empty for
+       original ones. Pick it as **Label** in Network Explorer to see
+       each derived node's formula directly on the graph.
 
 Controls
 --------
@@ -125,6 +130,15 @@ Controls
 - **Generate** — rebuilds the graph from the current configuration
   table. The widget also auto-regenerates whenever a valid input
   arrives.
+
+Warnings
+--------
+
+- *Input has no derived variables; the dependency graph is empty.*
+  Fires when every row of the configuration table is an original
+  variable (no ``Expression`` set). The output network has nodes but
+  no edges. Usually means you forgot to attach the second output of
+  **Time Features Constructor** instead of the data output.
 
 Input Requirements
 ------------------

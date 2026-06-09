@@ -132,9 +132,9 @@ widest temporal footprint.</p>
 <tbody>
 <tr class="row-even"><td><p>Network</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">orangecontrib.network.Network</span></code></p></td>
-<td><p>A directed weighted graph. <code class="docutils literal notranslate"><span class="pre">network.edges[0].edges</span></code> is the
-sparse adjacency matrix; its non-zero values carry the edge
-weights described below.</p></td>
+<td><p>A <strong>directed</strong> weighted graph. <code class="docutils literal notranslate"><span class="pre">network.edges[0]</span></code> is a
+<code class="docutils literal notranslate"><span class="pre">DirectedEdges</span></code> instance whose sparse adjacency matrix carries
+the per-edge weights described in <em>Edge Weights</em> below.</p></td>
 </tr>
 </tbody>
 </table>
@@ -233,6 +233,12 @@ downstream styling:</p>
 <td><p>Discrete</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">Derived</span></code> (has an expression) or <code class="docutils literal notranslate"><span class="pre">Original</span></code> (source feature).</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">expression</span></code></p></td>
+<td><p>String</p></td>
+<td><p>The literal expression text for derived variables; empty for
+original ones. Pick it as <strong>Label</strong> in Network Explorer to see
+each derived node’s formula directly on the graph.</p></td>
+</tr>
 </tbody>
 </table>
 </section>
@@ -242,6 +248,16 @@ downstream styling:</p>
 <li><p><strong>Generate</strong> — rebuilds the graph from the current configuration
 table. The widget also auto-regenerates whenever a valid input
 arrives.</p></li>
+</ul>
+</section>
+<section id="warnings">
+<h2>Warnings<a class="headerlink" href="#warnings" title="Link to this heading">¶</a></h2>
+<ul class="simple">
+<li><p><em>Input has no derived variables; the dependency graph is empty.</em>
+Fires when every row of the configuration table is an original
+variable (no <code class="docutils literal notranslate"><span class="pre">Expression</span></code> set). The output network has nodes but
+no edges. Usually means you forgot to attach the second output of
+<strong>Time Features Constructor</strong> instead of the data output.</p></li>
 </ul>
 </section>
 <section id="input-requirements">

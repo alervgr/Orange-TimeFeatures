@@ -11,7 +11,7 @@ import numpy as np
 from scipy import sparse as sp
 
 import Orange
-from Orange.data import Table, Domain, StringVariable, DiscreteVariable
+from Orange.data import DiscreteVariable, Domain, StringVariable, Table
 from Orange.widgets import gui, settings
 from Orange.widgets.widget import Input, Output, Msg, OWWidget
 from Orange.widgets.utils.concurrent import ConcurrentWidgetMixin
@@ -19,6 +19,7 @@ from Orange.widgets.utils.concurrent import ConcurrentWidgetMixin
 from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QHBoxLayout
 
 from orangecontrib.network import Network
+from orangecontrib.network.network.base import DirectedEdges
 
 
 # Sanitización idéntica a la del Time Features Constructor para que los
@@ -60,15 +61,16 @@ def _expression_or_none(value):
 
 
 def _temporal_weights(expression):
-    """Por cada variable referenciada en una función temporal de
-    ``expression``, devuelve el máximo ``|arg|`` numérico entre TODAS las
-    llamadas que la mencionan. La idea: cuanto mayor el peso, mayor la
-    ventana temporal con la que esa variable interviene.
+    """Per variable referenced inside a temporal call of ``expression``,
+    return the maximum ``|arg|`` aggregated across every call that
+    mentions it. The bigger the value, the larger the time window the
+    variable participates in.
 
     Returns
     -------
     dict[str, int]
-        variable → max(|arg|). Vacío si no hay llamadas temporales.
+        variable → max(|arg|). Empty if no temporal calls appear in
+        the expression.
     """
     weights = {}
     for match in _TIME_CALL_RE.finditer(expression):
@@ -82,27 +84,38 @@ def _temporal_weights(expression):
 
 
 def build_dependency_network(config_table):
-    """Construye un :class:`Network` a partir de una tabla de configuración.
+    """Build a :class:`Network` from a configuration table.
 
-    Las aristas llevan peso = máximo ``|arg|`` de las llamadas temporales
-    en la expresión origen que referencian a la variable destino, o 1
-    cuando la referencia es puramente no-temporal.
+    Edges carry a sparse-matrix weight equal to ``max(1, window)`` where
+    ``window`` is the largest absolute argument among the temporal calls
+    in the source expression that reference the destination variable; 1
+    for purely non-temporal references. Network Explorer's
+    *Scale edge widths to weights* picks this value up directly.
+
+    Node metadata
+    -------------
+    ``var_name`` (str), ``var_type`` (``Derived`` / ``Original``) and
+    ``expression`` (the literal expression text — empty for original
+    variables) are exposed under ``network.nodes``.
+
+    The graph is directed: an edge from ``A`` to ``B`` means *A depends
+    on B*.
 
     Parameters
     ----------
     config_table : Orange.data.Table
-        Tabla con dos columnas: ``Variable`` (nombre) y ``Expression``.
+        Table with at least the columns ``Variable`` (name) and
+        ``Expression``.
 
     Returns
     -------
     Network
-        Con ``network.nodes`` poblado: metas ``var_name`` (str) y
-        ``var_type`` (Derived / Original). El sparse matrix de aristas
-        tiene los pesos numéricos como valores.
     """
-    # 1. Localizar las columnas por nombre (pueden ser atributos o metas).
+    # 1. Locate the two columns by name (they may live in attributes or
+    #    metas depending on whence the table came).
     all_vars = {v.name: v for v in
-                list(config_table.domain.variables) + list(config_table.domain.metas)}
+                list(config_table.domain.variables)
+                + list(config_table.domain.metas)}
     var_col = all_vars["Variable"]
     expr_col = all_vars["Expression"]
 
@@ -112,29 +125,32 @@ def build_dependency_network(config_table):
     ]
 
     names = [name for name, _ in rows]
-    # Mapa nombre → posición → O(1) lookup en vez de list.index (O(n)).
+    # name → position lookup; O(1) instead of list.index().
     name_to_idx = {name: idx for idx, name in enumerate(names)}
 
-    # Regex compilada una vez. \b evita matchear sub-strings (p.ej. "X1"
-    # dentro de "X10"). Si no hay variables, no hace falta buscar nada.
+    # Compile the reference detector once. ``\b`` avoids substring
+    # matches (so ``X1`` doesn't trigger inside ``X10``). If the
+    # configuration table is empty there's nothing to search.
     pattern = (
         re.compile(r'\b(' + '|'.join(re.escape(n) for n in names) + r')\b')
         if names else None
     )
 
-    # 2. Detectar dependencias y calcular pesos.
+    # 2. Walk every row and collect one record per discovered edge.
     row_edges, col_edges, edge_weights = [], [], []
     var_type = []
+    expressions = []
     for src_idx, (_, expression) in enumerate(rows):
         if expression is None:
-            # Sin expresión → variable original.
+            # No expression → original variable, no outgoing edges.
             var_type.append(1)
+            expressions.append("")
             continue
         var_type.append(0)
+        expressions.append(expression)
         if pattern is None:
             continue
 
-        # Pesos por variable según las funciones temporales.
         temporal = _temporal_weights(expression)
 
         seen = set()
@@ -144,38 +160,47 @@ def build_dependency_network(config_table):
             if dep_idx is None or dep in seen:
                 continue
             seen.add(dep)
+
+            window = temporal.get(dep, 0)
+            # Keep the sparse weight ≥ 1 so consumers that filter out
+            # exact zeros still see plain-reference edges.
             row_edges.append(src_idx)
             col_edges.append(dep_idx)
-            # Peso temporal si lo hay; si la referencia es no-temporal, 1.
-            edge_weights.append(temporal.get(dep, 1))
+            edge_weights.append(max(1, window))
 
     n = len(names)
-    edges = sp.csr_matrix(
-        (np.asarray(edge_weights, dtype=float),
-         (row_edges, col_edges)),
+    sparse = sp.csr_matrix(
+        (np.asarray(edge_weights, dtype=float), (row_edges, col_edges)),
         shape=(n, n),
     )
 
-    # 3. Construir los nodos como meta-attributes.
+    # 3. Build per-node metadata.
     nodes_domain = Domain(
         [], [],
         metas=[
             StringVariable("var_name"),
             DiscreteVariable("var_type", values=["Derived", "Original"]),
+            StringVariable("expression"),
         ],
     )
-    metas = np.empty((n, 2), dtype=object)
+    node_metas = np.empty((n, 3), dtype=object)
     if n:
-        metas[:, 0] = names
-        metas[:, 1] = var_type
+        node_metas[:, 0] = names
+        node_metas[:, 1] = var_type
+        node_metas[:, 2] = expressions
     nodes = Table.from_numpy(
         nodes_domain,
         np.zeros((n, 0)),
         np.zeros((n, 0)),
-        metas,
+        node_metas,
     )
 
-    network = Network(range(n), edges, name="dependency")
+    # 4. Assemble the directed network. Previously we passed the sparse
+    # matrix directly to ``Network``, which auto-wrapped it as
+    # ``UndirectedEdges`` — a latent bug given that A→B is not the same
+    # as B→A in a dependency graph.
+    directed = DirectedEdges(sparse, name="depends_on")
+    network = Network(range(n), directed, name="dependency")
     network.nodes = nodes
     return network
 
@@ -197,6 +222,11 @@ class owvardependencygraph(OWWidget, ConcurrentWidgetMixin):
 
     class Error(OWWidget.Error):
         generation_error = Msg("{}")
+
+    class Warning(OWWidget.Warning):
+        no_derived = Msg(
+            "Input has no derived variables; the dependency graph is empty."
+        )
 
     class Inputs:
         data = Input("Variable Definitions", Orange.data.Table)
@@ -255,6 +285,7 @@ class owvardependencygraph(OWWidget, ConcurrentWidgetMixin):
 
     def generate(self):
         self.Error.generation_error.clear()
+        self.Warning.no_derived.clear()
         if self.data is None:
             self.Outputs.network.send(None)
             return
@@ -263,6 +294,15 @@ class owvardependencygraph(OWWidget, ConcurrentWidgetMixin):
             network = build_dependency_network(self.data)
         except Exception as exc:  # pylint: disable=broad-except
             self.Error.generation_error(str(exc))
-            network = None
+            self.Outputs.network.send(None)
+            return
+
+        # Heads-up: if every row of the configuration table is an
+        # original variable, the resulting graph has no edges. The user
+        # might have forgotten to fill in expressions.
+        if network.number_of_nodes() > 0:
+            var_type_col = network.nodes.get_column("var_type")
+            if all(int(value) == 1 for value in var_type_col):
+                self.Warning.no_derived()
 
         self.Outputs.network.send(network)
