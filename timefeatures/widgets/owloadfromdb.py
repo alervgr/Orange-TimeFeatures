@@ -7,6 +7,7 @@ import Orange.data.pandas_compat as pc
 from AnyQt.QtCore import QObject, QThread, pyqtSignal
 from AnyQt.QtWidgets import (
     QComboBox, QGridLayout, QHBoxLayout, QLabel, QMessageBox, QPushButton,
+    QTableWidget, QTableWidgetItem
 )
 
 from Orange.data import Domain
@@ -103,12 +104,15 @@ class _LoadTableWorker(QObject):
 
     finished = pyqtSignal(object)
     failed = pyqtSignal(str)
+    progress_changed = pyqtSignal(float)
 
-    def __init__(self, dialect, connection_params, table_name):
+    def __init__(self, dialect, connection_params, table_name, total_rows):
         super().__init__()
         self.dialect = dialect
         self.connection_params = connection_params
         self.table_name = table_name
+        self.total_rows = total_rows
+        self.is_cancelled = False
 
     def run(self):
         import pandas as pd
@@ -120,10 +124,24 @@ class _LoadTableWorker(QObject):
             )
             qi = self.dialect.quote_ident
             with engine.begin() as connection:
-                frame = pd.read_sql(
+                chunks = []
+                loaded_rows = 0
+                for chunk in pd.read_sql(
                     text(f"SELECT * FROM {qi(self.table_name)}"),
                     connection,
-                )
+                    chunksize=1000
+                ):
+                    if self.is_cancelled:
+                        raise Exception("Load cancelled by user.")
+                    chunks.append(chunk)
+                    loaded_rows += len(chunk)
+                    if self.total_rows > 0:
+                        self.progress_changed.emit(10 + (loaded_rows / self.total_rows) * 60)
+                
+                if chunks:
+                    frame = pd.concat(chunks, ignore_index=True)
+                else:
+                    frame = pd.read_sql(text(f"SELECT * FROM {qi(self.table_name)} LIMIT 0"), connection)
             self.finished.emit(frame)
         except Exception as ex:  # pylint: disable=broad-except
             self.failed.emit(str(ex))
@@ -218,6 +236,8 @@ class owloadfromdb(OWBaseSql, OWWidget):
         self.btn_loaddata = None
         self.btn_refresh = None
         self.btn_delete = None
+        self.btn_cancel = None
+        self.preview_table = None
         self.data = None
         self._busy = False
         self._available = {}
@@ -335,7 +355,6 @@ class owloadfromdb(OWBaseSql, OWWidget):
         self.class_combo.currentTextChanged.connect(self._on_class_changed)
         layout.addWidget(self.class_combo, 2, 1, 1, 3)
 
-        # Row 3: Load button right-aligned.
         self.btn_loaddata = QPushButton(
             "Load",
             toolTip="Load the selected dataset into Orange.",
@@ -343,7 +362,27 @@ class owloadfromdb(OWBaseSql, OWWidget):
         )
         self.btn_loaddata.clicked.connect(self.load_data)
         self.btn_loaddata.setEnabled(False)
-        layout.addWidget(self.btn_loaddata, 3, 3)
+        
+        self.btn_cancel = QPushButton("Cancel", minimumWidth=80)
+        self.btn_cancel.clicked.connect(self.cancelLoad)
+        self.btn_cancel.setEnabled(False)
+        
+        button_row = QHBoxLayout()
+        button_row.setSpacing(0)
+        button_row.setContentsMargins(0, 0, 0, 0)
+        button_row.addStretch(1)
+        button_row.addWidget(self.btn_cancel)
+        button_row.addSpacing(20)
+        button_row.addWidget(self.btn_loaddata)
+        layout.addLayout(button_row, 3, 0, 1, 4)
+
+        # Row 4: Preview Table
+        layout.addWidget(QLabel("Data Preview (Top 50 rows):"), 4, 0, 1, 4)
+        self.preview_table = QTableWidget()
+        self.preview_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.preview_table.setSelectionMode(QTableWidget.NoSelection)
+        self.preview_table.setFixedHeight(150)
+        layout.addWidget(self.preview_table, 5, 0, 1, 4)
 
     def _set_connection_status(self, message, state="neutral"):
         if self.connection_status_label is None:
@@ -376,10 +415,16 @@ class owloadfromdb(OWBaseSql, OWWidget):
         self.class_combo.setEnabled(False)
 
         self.btn_loaddata.setEnabled(False)
+        if self.btn_cancel is not None:
+            self.btn_cancel.setEnabled(False)
         if self.btn_refresh is not None:
             self.btn_refresh.setEnabled(False)
         if self.btn_delete is not None:
             self.btn_delete.setEnabled(False)
+        if self.preview_table is not None:
+            self.preview_table.clear()
+            self.preview_table.setRowCount(0)
+            self.preview_table.setColumnCount(0)
         self.dataset_info_label.setText(
             "Connect to a database to list available datasets."
         )
@@ -620,8 +665,7 @@ class owloadfromdb(OWBaseSql, OWWidget):
                 info += f" ({ds['class']})"
         self.dataset_info_label.setText(info)
 
-        # ``SELECT ... LIMIT 0`` is cheap (server only sends the column
-        # header back) so it's fine to run synchronously here.
+        # header back if 0, but 50 is also fast) so it's fine to run synchronously here.
         try:
             _, _, text, _ = _sqlalchemy_modules()
             engine = _create_sqlalchemy_engine(
@@ -630,13 +674,23 @@ class owloadfromdb(OWBaseSql, OWWidget):
             qi = self.dialect.quote_ident
             with engine.begin() as connection:
                 result = connection.execute(
-                    text(f"SELECT * FROM {qi(name)} LIMIT 0")
+                    text(f"SELECT * FROM {qi(name)} LIMIT 50")
                 )
                 columns = list(result.keys())
+                rows = [dict(row) for row in result.mappings()]
             engine.dispose()
         except Exception as ex:  # pylint: disable=broad-except
             self.Error.connection(str(ex))
             return
+            
+        self.preview_table.clear()
+        self.preview_table.setColumnCount(len(columns))
+        self.preview_table.setHorizontalHeaderLabels(columns)
+        self.preview_table.setRowCount(len(rows))
+        for r_idx, row in enumerate(rows):
+            for c_idx, col in enumerate(columns):
+                item = QTableWidgetItem(str(row[col]) if row[col] is not None else "")
+                self.preview_table.setItem(r_idx, c_idx, item)
 
         self.class_combo.blockSignals(True)
         self.class_combo.clear()
@@ -681,13 +735,17 @@ class owloadfromdb(OWBaseSql, OWWidget):
         )
 
         self._thread = QThread(self)
+        
+        total_rows = self._available[self.selected_dataset].get("rows", 0)
         self._worker = _LoadTableWorker(
             dialect=self.dialect,
             connection_params=self._connection_params(),
             table_name=self.selected_dataset,
+            total_rows=total_rows,
         )
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
+        self._worker.progress_changed.connect(self.progressBarSet)
         self._worker.finished.connect(self._on_table_loaded)
         self._worker.failed.connect(self._on_table_failed)
         self._worker.finished.connect(lambda *_: self._thread.quit())
@@ -728,6 +786,13 @@ class owloadfromdb(OWBaseSql, OWWidget):
         self._set_connection_status(f"Load failed: {message}", "error")
         self.Outputs.data.send(None)
 
+    def cancelLoad(self):
+        if self._worker is not None:
+            self._worker.is_cancelled = True
+            if self.btn_cancel is not None:
+                self.btn_cancel.setEnabled(False)
+            self._set_connection_status("Cancelling load...", "neutral")
+
     def _set_load_controls_enabled(self, enabled):
         for widget in (
             self.connectbutton, self.btn_loaddata, self.backendcombo,
@@ -737,6 +802,8 @@ class owloadfromdb(OWBaseSql, OWWidget):
         ):
             if widget is not None:
                 widget.setEnabled(enabled)
+        if self.btn_cancel is not None:
+            self.btn_cancel.setEnabled(not enabled)
 
     def onDeleteWidget(self):
         if self._thread is not None and self._thread.isRunning():

@@ -221,6 +221,7 @@ class _UploadWorker(QObject):
         self.email_params = email_params
         # One of "create" / "overwrite" / "append".
         self.write_mode = write_mode
+        self.is_cancelled = False
 
     def run(self):
         start_time = time.time()
@@ -292,6 +293,8 @@ class _UploadWorker(QObject):
 
                 # --- Data upload ---------------------------------------- #
                 for index, chunk in enumerate(_iter_dataframe_chunks(frame)):
+                    if self.is_cancelled:
+                        raise Exception("Upload cancelled by user.")
                     self.status_changed.emit(
                         f"Uploading rows {index + 1}/{total_chunks}..."
                     )
@@ -528,6 +531,7 @@ class owsavetodb(OWBaseSql, OWWidget):
         self.connection_status_label = None
         self.modeCombo = None
         self.emailDirection = None
+        self.btn_cancel = None
         self.data = None
         self.rows = 0
         self.cols = 0
@@ -627,6 +631,12 @@ class owsavetodb(OWBaseSql, OWWidget):
         #     placeholderText="Email... (Optional)", toolTip="Email direction")
         # layoutA.addWidget(self.emailDirection, 5, 0)
         self.emailDirection = None
+        
+        self.btn_cancel = QPushButton("Cancel", minimumWidth=120)
+        self.btn_cancel.clicked.connect(self.cancelUpload)
+        self.btn_cancel.setEnabled(False)
+        layoutA.addWidget(self.btn_cancel, 4, 2)
+        
         self.btn_savedata = QPushButton(
             "Save", toolTip="Save a dataset into a DB",
             minimumWidth=120
@@ -634,6 +644,7 @@ class owsavetodb(OWBaseSql, OWWidget):
         self.btn_savedata.clicked.connect(self.saveData)
         self.btn_savedata.setEnabled(False)
         layoutA.addWidget(self.btn_savedata, 5, 2)
+
         self._add_backend_controls()
         self._add_connection_status()
 
@@ -798,6 +809,14 @@ class owsavetodb(OWBaseSql, OWWidget):
         self._upload_thread.finished.connect(self._on_upload_thread_finished)
         self._upload_thread.start()
 
+    def cancelUpload(self):
+        if self._upload_worker is not None:
+            self._upload_worker.is_cancelled = True
+            if self.btn_cancel is not None:
+                self.btn_cancel.setEnabled(False)
+            self._set_connection_status("Cancelling upload...", "neutral")
+
+
     def _on_upload_status(self, message):
         self._set_connection_status(message, "neutral")
 
@@ -830,6 +849,8 @@ class owsavetodb(OWBaseSql, OWWidget):
             if widget is not None:
                 widget.setEnabled(enabled)
         self.btn_savedata.setEnabled(enabled and bool(self.data))
+        if self.btn_cancel is not None:
+            self.btn_cancel.setEnabled(not enabled)
 
     def onDeleteWidget(self):
         if self._upload_thread is not None and self._upload_thread.isRunning():
