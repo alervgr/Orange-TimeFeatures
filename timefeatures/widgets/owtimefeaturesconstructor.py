@@ -113,10 +113,15 @@ def _time_func_pattern(name, n_offsets):
     )
 
 
+# Desplazamientos enteros que recibe cada función temporal tras la variable.
+# También lo usa el Variable Dependency Graph para reconocer las llamadas.
+TIME_FUNC_ARITY = {
+    "shift": 1, "sum": 2, "mean": 2, "count": 2, "min": 2, "max": 2, "sd": 2,
+}
+
 _TIME_FUNC_PATTERNS = {
-    "shift": _time_func_pattern("shift", 1),
-    **{name: _time_func_pattern(name, 2)
-       for name in ("sum", "mean", "count", "min", "max", "sd")},
+    name: _time_func_pattern(name, n_offsets)
+    for name, n_offsets in TIME_FUNC_ARITY.items()
 }
 
 
