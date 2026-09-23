@@ -2,7 +2,8 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/TimeFeatures)](https://pypi.org/project/TimeFeatures/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![CI](https://github.com/alervgr/Orange-TimeFeatures/actions/workflows/ci.yml/badge.svg)](https://github.com/alervgr/Orange-TimeFeatures/actions/workflows/ci.yml)
 [![Orange3](https://img.shields.io/badge/Orange3-add--on-orange)](https://orangedatamining.com/)
 
 TimeFeatures is an add-on for [Orange] 3 data mining software for generating synthetic data using datasets with time series, generating graphs of relationships between the generated variables, and includes widgets to save and load data and configuration tables from a database.
@@ -52,8 +53,9 @@ If using Anaconda Python distribution, simply run
 
     pip install TimeFeatures
 
-**Required Dependencies**:
+**Required Dependencies** (Python 3.10 or newer):
 
+* Orange3>=3.36.2
 * numpy>=1.22.4
 * AnyQt>=0.2.0
 * PyQt5>=5.15.6

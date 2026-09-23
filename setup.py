@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import find_namespace_packages, setup
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -17,7 +17,10 @@ CLASSIFIERS = [
     'Development Status :: 4 - Beta',
     'Environment :: Plugins',
     'Programming Language :: Python',
-    'License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)',
+    'Programming Language :: Python :: 3 :: Only',
+    'Programming Language :: Python :: 3.10',
+    'Programming Language :: Python :: 3.11',
+    'Programming Language :: Python :: 3.12',
     'Operating System :: OS Independent',
     'Topic :: Software Development :: Libraries :: Python Modules',
     'Intended Audience :: Education',
@@ -26,7 +29,13 @@ CLASSIFIERS = [
 ]
 
 setup(name="TimeFeatures",
-      packages=["timefeatures", "timefeatures.widgets"],
+      # Namespace discovery also lists the data-only directories (bundled
+      # help, icons) so setuptools keeps shipping their files; the tests
+      # stay out of the distribution.
+      packages=find_namespace_packages(
+          include=["timefeatures", "timefeatures.*"],
+          exclude=["timefeatures.widgets.tests", "timefeatures.widgets.tests.*"],
+      ),
       include_package_data=True,
       package_data={"timefeatures.widgets": ["icons/*.svg", "icons/*.png"]},
       entry_points={
@@ -35,7 +44,11 @@ setup(name="TimeFeatures",
               "html-index = timefeatures.help:WIDGET_HELP_PATH"
           ),
       },
+      # Tested in CI from these floors (Orange3 3.36.2 on Python 3.10) up to
+      # the latest releases; see .github/workflows/ci.yml.
+      python_requires=">=3.10",
       install_requires=[
+          "Orange3>=3.36.2",
           "numpy>=1.22.4",
           "AnyQt>=0.2.0",
           "PyQt5>=5.15.6",
@@ -59,7 +72,7 @@ setup(name="TimeFeatures",
           'addon', 'synthetic data'
       ],
       url="https://github.com/alervgr/Orange-TimeFeatures",
-      license="GPL3+",
+      license="GPL-3.0-or-later",
       long_description=ABOUT,
       long_description_content_type='text/markdown',
       description="Timefeatures add-on for Orange 3 data mining software.",
