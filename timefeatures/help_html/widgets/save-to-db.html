@@ -240,7 +240,9 @@ never appears in <strong>Load from DB</strong> and can be dropped by hand.</p>
 </div>
 <p>While the worker runs, the widget’s progress bar and status label are
 updated through Qt signals; the <strong>Save</strong>, <strong>Connect</strong> and form controls
-are temporarily disabled.</p>
+are temporarily disabled. Removing the widget or closing the workflow
+during an upload cancels it (rolled back as described above) instead
+of freezing the canvas until the upload ends.</p>
 </section>
 <section id="type-mapping">
 <h2>Type Mapping<a class="headerlink" href="#type-mapping" title="Link to this heading">¶</a></h2>

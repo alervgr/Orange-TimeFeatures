@@ -135,7 +135,9 @@ back on both engines.
 
 While the worker runs, the widget's progress bar and status label are
 updated through Qt signals; the **Save**, **Connect** and form controls
-are temporarily disabled.
+are temporarily disabled. Removing the widget or closing the workflow
+during an upload cancels it (rolled back as described above) instead
+of freezing the canvas until the upload ends.
 
 Type Mapping
 ------------

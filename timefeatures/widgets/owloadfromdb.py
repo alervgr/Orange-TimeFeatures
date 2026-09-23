@@ -4,7 +4,7 @@ no Select Columns widget is needed downstream."""
 
 import Orange
 import Orange.data.pandas_compat as pc
-from AnyQt.QtCore import QObject, QThread, pyqtSignal
+from AnyQt.QtCore import QObject, pyqtSignal
 from AnyQt.QtWidgets import (
     QComboBox, QGridLayout, QHBoxLayout, QLabel, QMessageBox, QPushButton,
     QTableWidget, QTableWidgetItem
@@ -18,6 +18,7 @@ from Orange.widgets.utils.widgetpreview import WidgetPreview
 from Orange.widgets.widget import Msg, Output, OWWidget
 from orangewidget.utils.combobox import ComboBoxSearch
 
+from timefeatures.widgets._threads import abandon, start_worker
 from timefeatures.widgets.owsavetodb import (
     CONNECTION_STATUS_STYLES,
     _DIALECTS,
@@ -124,6 +125,10 @@ class _LoadTableWorker(QObject):
             )
             qi = self.dialect.quote_ident
             with engine.begin() as connection:
+                # Server-side cursor: rows arrive in chunks instead of the
+                # driver fetching the whole table up front, so progress is
+                # real and Cancel takes effect within one chunk.
+                connection.execution_options(stream_results=True)
                 chunks = []
                 loaded_rows = 0
                 for chunk in pd.read_sql(
@@ -476,26 +481,32 @@ class owloadfromdb(OWBaseSql, OWWidget):
     # ------------------------------------------------------------------ #
     #  Dataset listing
     # ------------------------------------------------------------------ #
+    def _start_worker(self, worker):
+        """Run ``worker`` in the background as the current operation. Its
+        callbacks must already be connected."""
+        self._worker = worker
+        self._thread = start_worker(worker, self._on_thread_released)
+
+    def _on_thread_released(self, thread):
+        # Only if it is still the current operation: a callback of this
+        # one may already have started the next (e.g. auto-load right
+        # after listing), whose references must survive.
+        if thread is self._thread:
+            self._thread = None
+            self._worker = None
+
     def _populate_datasets(self):
         self.Warning.no_datasets.clear()
         self._set_connection_status("Listing datasets...", "neutral")
         self._busy = True
 
-        self._thread = QThread(self)
-        self._worker = _ListDatasetsWorker(
+        worker = _ListDatasetsWorker(
             dialect=self.dialect,
             connection_params=self._connection_params(),
         )
-        self._worker.moveToThread(self._thread)
-        self._thread.started.connect(self._worker.run)
-        self._worker.finished.connect(self._on_datasets_loaded)
-        self._worker.failed.connect(self._on_datasets_failed)
-        self._worker.finished.connect(lambda _: self._thread.quit())
-        self._worker.failed.connect(lambda _: self._thread.quit())
-        self._thread.finished.connect(self._worker.deleteLater)
-        self._thread.finished.connect(self._thread.deleteLater)
-        self._thread.finished.connect(self._on_thread_finished)
-        self._thread.start()
+        worker.finished.connect(self._on_datasets_loaded)
+        worker.failed.connect(self._on_datasets_failed)
+        self._start_worker(worker)
 
     def _on_datasets_loaded(self, datasets):
         self._busy = False
@@ -562,10 +573,6 @@ class owloadfromdb(OWBaseSql, OWWidget):
         )
         self.Error.connection(message)
 
-    def _on_thread_finished(self):
-        self._thread = None
-        self._worker = None
-
     # ------------------------------------------------------------------ #
     #  Refresh / Delete
     # ------------------------------------------------------------------ #
@@ -606,24 +613,19 @@ class owloadfromdb(OWBaseSql, OWWidget):
 
         self._busy = True
         self._set_load_controls_enabled(False)
+        # A DROP cannot be cancelled halfway; Cancel is only for loads.
+        if self.btn_cancel is not None:
+            self.btn_cancel.setEnabled(False)
         self._set_connection_status(f"Deleting {target}...", "neutral")
 
-        self._thread = QThread(self)
-        self._worker = _DeleteDatasetWorker(
+        worker = _DeleteDatasetWorker(
             dialect=self.dialect,
             connection_params=self._connection_params(),
             table_name=target,
         )
-        self._worker.moveToThread(self._thread)
-        self._thread.started.connect(self._worker.run)
-        self._worker.finished.connect(self._on_delete_finished)
-        self._worker.failed.connect(self._on_delete_failed)
-        self._worker.finished.connect(lambda *_: self._thread.quit())
-        self._worker.failed.connect(lambda *_: self._thread.quit())
-        self._thread.finished.connect(self._worker.deleteLater)
-        self._thread.finished.connect(self._thread.deleteLater)
-        self._thread.finished.connect(self._on_thread_finished)
-        self._thread.start()
+        worker.finished.connect(self._on_delete_finished)
+        worker.failed.connect(self._on_delete_failed)
+        self._start_worker(worker)
 
     def _on_delete_finished(self, table_name):
         self._busy = False
@@ -734,26 +736,17 @@ class owloadfromdb(OWBaseSql, OWWidget):
             f"Loading {self.selected_dataset}...", "neutral"
         )
 
-        self._thread = QThread(self)
-        
         total_rows = self._available[self.selected_dataset].get("rows", 0)
-        self._worker = _LoadTableWorker(
+        worker = _LoadTableWorker(
             dialect=self.dialect,
             connection_params=self._connection_params(),
             table_name=self.selected_dataset,
             total_rows=total_rows,
         )
-        self._worker.moveToThread(self._thread)
-        self._thread.started.connect(self._worker.run)
-        self._worker.progress_changed.connect(self.progressBarSet)
-        self._worker.finished.connect(self._on_table_loaded)
-        self._worker.failed.connect(self._on_table_failed)
-        self._worker.finished.connect(lambda *_: self._thread.quit())
-        self._worker.failed.connect(lambda *_: self._thread.quit())
-        self._thread.finished.connect(self._worker.deleteLater)
-        self._thread.finished.connect(self._thread.deleteLater)
-        self._thread.finished.connect(self._on_thread_finished)
-        self._thread.start()
+        worker.progress_changed.connect(self.progressBarSet)
+        worker.finished.connect(self._on_table_loaded)
+        worker.failed.connect(self._on_table_failed)
+        self._start_worker(worker)
 
     def _on_table_loaded(self, frame):
         self.progressBarSet(70)
@@ -806,9 +799,13 @@ class owloadfromdb(OWBaseSql, OWWidget):
             self.btn_cancel.setEnabled(not enabled)
 
     def onDeleteWidget(self):
-        if self._thread is not None and self._thread.isRunning():
-            self._thread.quit()
-            self._thread.wait()
+        # Waiting for the query here would freeze the canvas until it
+        # ends. Instead cancel the current operation, detach it from this
+        # widget and let its thread end on its own.
+        if self._thread is not None:
+            abandon(self._thread)
+            self._thread = None
+            self._worker = None
         super().onDeleteWidget()
 
     def clear(self):

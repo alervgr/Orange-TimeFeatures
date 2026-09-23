@@ -10,7 +10,7 @@ from email.mime.text import MIMEText
 
 import Orange
 import Orange.data.pandas_compat as pc
-from AnyQt.QtCore import QObject, QThread, Qt, pyqtSignal
+from AnyQt.QtCore import QObject, Qt, pyqtSignal
 from AnyQt.QtWidgets import QComboBox
 from Orange.data import Table
 from Orange.data.sql.backend import Backend
@@ -26,6 +26,8 @@ from PyQt5.QtWidgets import (
     QGridLayout, QLabel, QLineEdit, QPushButton, QSizePolicy,
 )
 from orangewidget.utils.signals import Input
+
+from timefeatures.widgets._threads import abandon, start_worker
 
 MAX_DL_LIMIT = 1000000
 PANDAS_SQL_CHUNKSIZE = 1000
@@ -869,8 +871,7 @@ class owsavetodb(OWBaseSql, OWWidget):
         self.progressBarSet(0)
         self._set_connection_status("Starting upload...", "neutral")
 
-        self._upload_thread = QThread(self)
-        self._upload_worker = _UploadWorker(
+        worker = _UploadWorker(
             table=self.data,
             dialect=self.dialect,
             connection_params=connection_params,
@@ -878,18 +879,14 @@ class owsavetodb(OWBaseSql, OWWidget):
             email_params=email_params,
             write_mode=self.write_mode,
         )
-        self._upload_worker.moveToThread(self._upload_thread)
-        self._upload_thread.started.connect(self._upload_worker.run)
-        self._upload_worker.progress_changed.connect(self.progressBarSet)
-        self._upload_worker.status_changed.connect(self._on_upload_status)
-        self._upload_worker.finished.connect(self._on_upload_finished)
-        self._upload_worker.failed.connect(self._on_upload_failed)
-        self._upload_worker.finished.connect(lambda _: self._upload_thread.quit())
-        self._upload_worker.failed.connect(lambda _: self._upload_thread.quit())
-        self._upload_thread.finished.connect(self._upload_worker.deleteLater)
-        self._upload_thread.finished.connect(self._upload_thread.deleteLater)
-        self._upload_thread.finished.connect(self._on_upload_thread_finished)
-        self._upload_thread.start()
+        worker.progress_changed.connect(self.progressBarSet)
+        worker.status_changed.connect(self._on_upload_status)
+        worker.finished.connect(self._on_upload_finished)
+        worker.failed.connect(self._on_upload_failed)
+        self._upload_worker = worker
+        self._upload_thread = start_worker(
+            worker, self._on_upload_thread_released
+        )
 
     def cancelUpload(self):
         if self._upload_worker is not None:
@@ -918,9 +915,10 @@ class owsavetodb(OWBaseSql, OWWidget):
         self.Error.connection(message)
         self._set_connection_status(f"Upload failed: {message}", "error")
 
-    def _on_upload_thread_finished(self):
-        self._upload_thread = None
-        self._upload_worker = None
+    def _on_upload_thread_released(self, thread):
+        if thread is self._upload_thread:
+            self._upload_thread = None
+            self._upload_worker = None
 
     def _set_upload_controls_enabled(self, enabled):
         for widget in (
@@ -935,9 +933,13 @@ class owsavetodb(OWBaseSql, OWWidget):
             self.btn_cancel.setEnabled(not enabled)
 
     def onDeleteWidget(self):
-        if self._upload_thread is not None and self._upload_thread.isRunning():
-            self._upload_thread.quit()
-            self._upload_thread.wait()
+        # Waiting for the upload here would freeze the canvas until it
+        # ends. Cancel it instead (the transaction and staging table make
+        # that safe) and let its thread end on its own.
+        if self._upload_thread is not None:
+            abandon(self._upload_thread)
+            self._upload_thread = None
+            self._upload_worker = None
         super().onDeleteWidget()
 
     def highlight_error(self, text=""):

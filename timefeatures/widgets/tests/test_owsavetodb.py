@@ -12,12 +12,15 @@ El envío de email no se prueba (está desactivado).
 """
 import os
 import tempfile
+import threading
+import time
 import unittest
 from datetime import datetime
 from unittest import mock
 
 import numpy as np
 import Orange
+from Orange.widgets.tests.base import WidgetTest
 
 from timefeatures.widgets import owsavetodb
 from timefeatures.widgets.owsavetodb import (
@@ -33,6 +36,7 @@ from timefeatures.widgets.owsavetodb import (
     _iter_dataframe_chunks,
     _pandas_if_exists,
     _sql_export_variables,
+    owsavetodb as OWSaveToDB,
     quote_ident,
 )
 
@@ -346,6 +350,84 @@ def _params_from_url(url):
     }
 
 
+def sqlite_params(path):
+    return {
+        "host": None, "port": None, "database": path,
+        "username": None, "password": None,
+    }
+
+
+def numeric_table(n_rows, offset=0):
+    domain = Orange.data.Domain([Orange.data.ContinuousVariable("x")])
+    return Orange.data.Table.from_numpy(
+        domain, (np.arange(n_rows, dtype=float) + offset).reshape(-1, 1)
+    )
+
+
+def make_upload_worker(dialect, connection_params, table, mode="create",
+                       table_name=TEST_TABLE):
+    return _UploadWorker(
+        table=table,
+        dialect=dialect,
+        connection_params=connection_params,
+        metadata={
+            "table_name": table_name,
+            "params": {
+                "dataset_name": table_name,
+                "created_at": datetime.now(),
+                "row_count": len(table),
+                "col_count": len(table.domain),
+                "target_type": "None",
+                "class_name": None,
+            },
+        },
+        email_params={"mail": ""},
+        write_mode=mode,
+    )
+
+
+# --------------------------------------------------------------------- #
+#  Utilidades para probar los hilos de los widgets
+# --------------------------------------------------------------------- #
+class Gate:
+    """Detiene un worker al empezar ``run()`` hasta que la prueba lo
+    suelta, para poder actuar mientras la operación está en curso."""
+
+    def __init__(self):
+        self.reached = threading.Event()
+        self.release = threading.Event()
+
+
+def gated(worker_cls, gate):
+    class Gated(worker_cls):
+        def run(self):
+            gate.reached.set()
+            # Con un tope: si el código bajo prueba bloquea el hilo
+            # principal, la prueba falla en vez de colgarse.
+            gate.release.wait(5)
+            super().run()
+    return Gated
+
+
+def wait_until(condition, timeout=5.0):
+    """Procesa eventos de Qt hasta que ``condition()`` sea cierta."""
+    from AnyQt.QtWidgets import QApplication
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        QApplication.processEvents()
+        if condition():
+            return True
+        time.sleep(0.01)
+    return False
+
+
+def thread_finished(thread):
+    try:
+        return thread.isFinished()
+    except RuntimeError:  # objeto Qt ya destruido tras terminar
+        return True
+
+
 class _UploadWorkerCases:
     """Casos comunes a todos los motores. Cada subclase define ``dialect``
     y ``connection_params``. Con 2 500 filas y bloques de 1 000, una
@@ -428,27 +510,9 @@ class _UploadWorkerCases:
                 cancel_on_chunk=None):
         """Ejecuta el worker de forma síncrona y devuelve
         ``{"finished": segundos}`` o ``{"failed": mensaje}``."""
-        domain = Orange.data.Domain([Orange.data.ContinuousVariable("x")])
-        table = Orange.data.Table.from_numpy(
-            domain, (np.arange(n_rows, dtype=float) + offset).reshape(-1, 1)
-        )
-        worker = _UploadWorker(
-            table=table,
-            dialect=self.dialect,
-            connection_params=self.connection_params,
-            metadata={
-                "table_name": TEST_TABLE,
-                "params": {
-                    "dataset_name": TEST_TABLE,
-                    "created_at": datetime.now(),
-                    "row_count": n_rows,
-                    "col_count": 1,
-                    "target_type": "None",
-                    "class_name": None,
-                },
-            },
-            email_params={"mail": ""},
-            write_mode=mode,
+        worker = make_upload_worker(
+            self.dialect, self.connection_params,
+            numeric_table(n_rows, offset), mode,
         )
         result = {}
         worker.finished.connect(lambda t: result.setdefault("finished", t))
@@ -554,10 +618,7 @@ class TestUploadWorkerSQLite(_UploadWorkerCases, unittest.TestCase):
     def setUp(self):
         handle, self._path = tempfile.mkstemp(suffix=".sqlite")
         os.close(handle)
-        self.connection_params = {
-            "host": None, "port": None, "database": self._path,
-            "username": None, "password": None,
-        }
+        self.connection_params = sqlite_params(self._path)
         super().setUp()
 
     def tearDown(self):
@@ -581,6 +642,73 @@ class TestUploadWorkerMySQL(_UploadWorkerCases, unittest.TestCase):
     connection_params = _params_from_url(
         os.environ.get("TIMEFEATURES_TEST_MYSQL_URL") or "mysql://"
     )
+
+
+# --------------------------------------------------------------------- #
+#  Widget: hilo de subida
+# --------------------------------------------------------------------- #
+class TestSaveToDbUploadThread(WidgetTest):
+    @unittest.skip("widget layout exceeds 800px; out of scope")
+    def test_minimum_size(self):
+        pass
+
+    def setUp(self):
+        handle, self.path = tempfile.mkstemp(suffix=".sqlite")
+        os.close(handle)
+        self.addCleanup(os.remove, self.path)
+        self.dialect = _SQLiteDialect()
+        patcher = mock.patch.dict(owsavetodb._DIALECTS, {"SQLite": self.dialect})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.gate = Gate()
+        self.addCleanup(self.gate.release.set)
+        patcher = mock.patch.object(
+            owsavetodb, "_UploadWorker", gated(_UploadWorker, self.gate)
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        self.widget = self.create_widget(OWSaveToDB)
+        self.send_signal(self.widget.Inputs.data, numeric_table(3000))
+        self.widget.selected_backend = "SQLite"
+        params = sqlite_params(self.path)
+        for attr in ("host", "port", "database", "username", "password"):
+            setattr(self.widget, attr, params[attr])
+
+    def _start_upload(self):
+        # ``_check_db_settings`` relee los campos de texto, que no
+        # admiten una ruta de SQLite; los parámetros ya están puestos.
+        with mock.patch.object(self.widget, "_check_db_settings"):
+            self.widget._start_upload(TEST_TABLE, None)
+        self.assertTrue(wait_until(self.gate.reached.is_set))
+
+    def test_upload_completes(self):
+        self._start_upload()
+        self.gate.release.set()
+        self.assertTrue(wait_until(lambda: not self.widget._uploading))
+        self.assertIn("completed", self.widget.connection_status_label.text())
+        # El hilo avisa al terminar y el widget suelta sus referencias.
+        self.assertTrue(wait_until(lambda: self.widget._upload_thread is None))
+        self.assertIsNone(self.widget._upload_worker)
+
+    def test_closing_during_upload_does_not_block_and_cancels_it(self):
+        self._start_upload()
+        worker, thread = self.widget._upload_worker, self.widget._upload_thread
+
+        started = time.monotonic()
+        self.widget.onDeleteWidget()
+        self.assertLess(time.monotonic() - started, 1.0)
+        self.assertTrue(worker.is_cancelled)
+
+        self.gate.release.set()
+        self.assertTrue(wait_until(lambda: thread_finished(thread)))
+        # La subida cancelada se deshace: no queda la tabla.
+        from sqlalchemy import inspect
+        engine = _create_sqlalchemy_engine(
+            self.dialect, **sqlite_params(self.path)
+        )
+        self.assertNotIn(TEST_TABLE, inspect(engine).get_table_names())
+        engine.dispose()
 
 
 if __name__ == "__main__":

@@ -197,20 +197,26 @@ connection through <code class="docutils literal notranslate"><span class="pre">
 then spawns a background <code class="docutils literal notranslate"><span class="pre">QThread</span></code> that runs a
 <code class="docutils literal notranslate"><span class="pre">_ListDatasetsWorker</span></code>. The worker queries the <code class="docutils literal notranslate"><span class="pre">datasets</span></code> metadata
 table via SQLAlchemy and emits the result back to the GUI thread.</p>
-<p>Selecting a dataset triggers a tiny <code class="docutils literal notranslate"><span class="pre">SELECT</span> <span class="pre">*</span> <span class="pre">FROM</span> <span class="pre">&lt;name&gt;</span> <span class="pre">LIMIT</span> <span class="pre">0</span></code>
-to fetch the column list — this is cheap enough to run synchronously
-because the server only returns the column header.</p>
-<p>When <strong>Load</strong> is clicked, a <code class="docutils literal notranslate"><span class="pre">_LoadTableWorker</span></code> runs
-<code class="docutils literal notranslate"><span class="pre">pandas.read_sql(&quot;SELECT</span> <span class="pre">*</span> <span class="pre">FROM</span> <span class="pre">&lt;name&gt;&quot;,</span> <span class="pre">engine)</span></code> on a background
-thread, returning a DataFrame that the GUI thread converts into an
-<code class="docutils literal notranslate"><span class="pre">Orange.data.Table</span></code> with
-<code class="docutils literal notranslate"><span class="pre">Orange.data.pandas_compat.table_from_frame</span></code>. If the user picked a
-class column, the helper <code class="docutils literal notranslate"><span class="pre">_build_domain_with_class</span></code> rebuilds the
+<p>Selecting a dataset runs <code class="docutils literal notranslate"><span class="pre">SELECT</span> <span class="pre">*</span> <span class="pre">FROM</span> <span class="pre">&lt;name&gt;</span> <span class="pre">LIMIT</span> <span class="pre">50</span></code> to fill the
+preview and the column list. This small query still runs on the GUI
+thread, so on a slow connection the widget pauses briefly.</p>
+<p>When <strong>Load</strong> is clicked, a <code class="docutils literal notranslate"><span class="pre">_LoadTableWorker</span></code> reads the table on a
+background thread in 1 000-row chunks through a server-side cursor
+(<code class="docutils literal notranslate"><span class="pre">stream_results</span></code>), so the progress bar follows the rows as they
+arrive and <strong>Cancel</strong> stops the load within one chunk. The resulting
+DataFrame is converted in the GUI thread into an <code class="docutils literal notranslate"><span class="pre">Orange.data.Table</span></code>
+with <code class="docutils literal notranslate"><span class="pre">Orange.data.pandas_compat.table_from_frame</span></code>. If the user picked
+a class column, the helper <code class="docutils literal notranslate"><span class="pre">_build_domain_with_class</span></code> rebuilds the
 domain so that column becomes <code class="docutils literal notranslate"><span class="pre">domain.class_var</span></code> and the rest of the
 columns stay in <code class="docutils literal notranslate"><span class="pre">domain.attributes</span></code>.</p>
 <p>While any worker runs, the form controls (database type, connection
 fields, <strong>Connect</strong>, <strong>Load</strong>, dataset and class combos) are
-temporarily disabled and the status label keeps the user informed.</p>
+temporarily disabled and the status label keeps the user informed.
+Each operation keeps its own thread, so an operation started from the
+end of another (the auto-load right after the listing, or the listing
+right after a delete) is never cut short or left uncancellable.
+Removing the widget or closing the workflow during a load cancels it
+instead of freezing the canvas until the query ends.</p>
 </section>
 <section id="auto-load">
 <h2>Auto-load<a class="headerlink" href="#auto-load" title="Link to this heading">¶</a></h2>
