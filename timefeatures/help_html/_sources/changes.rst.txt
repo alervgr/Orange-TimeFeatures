@@ -1,8 +1,8 @@
 Changelog
 =========
 
-Unreleased
-----------
+2.3.0
+-----
 
 **Fixes**
 
@@ -16,6 +16,14 @@ Unreleased
 - *Fix (Load from DB / Save to DB):* removing the widget or closing the workflow mid-operation no longer freezes the canvas waiting for the query or upload to end; the operation is cancelled and its thread ends on its own. On exit, Orange waits for any such thread to finish.
 - *Improvement (Load from DB):* loads read through a server-side cursor (``stream_results``), so rows really arrive in 1 000-row chunks: the progress bar is accurate and **Cancel** takes effect within one chunk instead of after the whole table has been fetched. **Cancel** is no longer enabled while a dataset is being deleted.
 - *Tests (Save to DB):* the upload worker is tested end to end on SQLite and, when ``TIMEFEATURES_TEST_POSTGRES_URL`` / ``TIMEFEATURES_TEST_MYSQL_URL`` point to disposable databases, on real PostgreSQL and MySQL servers, including failures and cancellations mid-upload.
+
+**Packaging & CI**
+
+- ``setup.py`` now declares ``Orange3>=3.36.2`` and ``python_requires=">=3.10"``, the oldest combination the tests pass on (older Orange3 releases do not work with NumPy 2). Previously Orange3 only arrived indirectly through Orange3-Network, and the README advertised Python 3.8+.
+- New GitHub Actions workflow (``.github/workflows/ci.yml``): the test suite on Python 3.10 with Orange3 3.36.2 and on Python 3.11 and 3.12 with the latest releases, with the Save to DB tests also running against PostgreSQL and MySQL service containers; a package job that builds the sdist and wheel, runs ``twine check`` and installs the wheel into an empty environment to check the entry points, icons and bundled help; and a docs job that builds Sphinx with warnings as errors.
+- Removed ``setup.cfg``: its only key (``description-file``) is deprecated and will stop being accepted by setuptools; ``setup.py`` already sets the long description.
+- The license is declared as the SPDX expression ``GPL-3.0-or-later`` instead of the deprecated license classifier, and packages are discovered with ``find_namespace_packages`` so setuptools keeps shipping the bundled help and icons without warnings. The built wheel has exactly the same files as before.
+- Automatic releases: after a merge to ``main``, once the tests, package and docs jobs pass, the workflow publishes the version in ``timefeatures/__version__.py`` to PyPI if it is not there yet (PyPI trusted publishing, no stored token) and creates the matching ``vX.Y.Z`` tag and GitHub release. See ``RELEASING.md``.
 
 **Documentation**
 

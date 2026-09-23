@@ -9,7 +9,7 @@
     <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
     <link rel="stylesheet" type="text/css" href="_static/basic.css?v=b08954a9" />
     <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=f6a572b4" />
-    <script src="_static/documentation_options.js?v=b21de401"></script>
+    <script src="_static/documentation_options.js?v=c3c8ae58"></script>
     <script src="_static/doctools.js?v=fd6eb6e6"></script>
     <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <link rel="index" title="Index" href="genindex.html" />
@@ -144,8 +144,8 @@ environment as long as Orange3 is installed there.</p>
 </section>
 <section id="dependencies">
 <h2>Dependencies<a class="headerlink" href="#dependencies" title="Link to this heading">¶</a></h2>
-<p>TimeFeatures declares the following runtime dependencies (see
-<code class="docutils literal notranslate"><span class="pre">setup.py</span></code>):</p>
+<p>TimeFeatures needs Python 3.10 or newer and declares the following runtime
+dependencies (see <code class="docutils literal notranslate"><span class="pre">setup.py</span></code>):</p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Package</p></th>
@@ -154,17 +154,26 @@ environment as long as Orange3 is installed there.</p>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">numpy</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Orange3</span></code></p></td>
+<td><p>3.36.2</p></td>
+<td><p>Host application and data model. Older releases do not work with
+NumPy 2.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">numpy</span></code></p></td>
 <td><p>1.22.4</p></td>
 <td><p>All widgets.</p></td>
 </tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">scipy</span></code></p></td>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">scipy</span></code></p></td>
 <td><p>1.7.3</p></td>
 <td><p>Sparse adjacency matrices in the dependency graph.</p></td>
 </tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">PyQt5</span></code></p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">PyQt5</span></code></p></td>
 <td><p>5.15.6</p></td>
 <td><p>Widget UI.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">PyQtWebEngine</span></code></p></td>
+<td><p>5.15.6</p></td>
+<td><p>Orange’s in-app help window.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">AnyQt</span></code></p></td>
 <td><p>0.2.0</p></td>
@@ -188,8 +197,14 @@ environment as long as Orange3 is installed there.</p>
 </tr>
 </tbody>
 </table>
-<p>Orange3 itself is intentionally left out of the requirements list — the
-host application provides it.</p>
+<p>Orange3 is listed explicitly so a clean <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span></code> gets a version
+the add-on is tested with. Inside an existing Orange installation that
+already meets the minimum, pip leaves it untouched.</p>
+<p>The CI workflow (<code class="docutils literal notranslate"><span class="pre">.github/workflows/ci.yml</span></code>) runs the test suite on
+Python 3.10 with Orange3 3.36.2 and on Python 3.11 and 3.12 with the
+latest releases, builds the package and installs the wheel into an
+empty environment, and builds this documentation with warnings as
+errors.</p>
 </section>
 <section id="running-tests">
 <h2>Running tests<a class="headerlink" href="#running-tests" title="Link to this heading">¶</a></h2>

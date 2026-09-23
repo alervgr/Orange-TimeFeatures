@@ -50,8 +50,8 @@ environment as long as Orange3 is installed there.
 Dependencies
 ------------
 
-|addon| declares the following runtime dependencies (see
-``setup.py``):
+|addon| needs Python 3.10 or newer and declares the following runtime
+dependencies (see ``setup.py``):
 
 .. list-table::
    :header-rows: 1
@@ -59,6 +59,10 @@ Dependencies
    * - Package
      - Minimum version
      - Used by
+   * - ``Orange3``
+     - 3.36.2
+     - Host application and data model. Older releases do not work with
+       NumPy 2.
    * - ``numpy``
      - 1.22.4
      - All widgets.
@@ -68,6 +72,9 @@ Dependencies
    * - ``PyQt5``
      - 5.15.6
      - Widget UI.
+   * - ``PyQtWebEngine``
+     - 5.15.6
+     - Orange's in-app help window.
    * - ``AnyQt``
      - 0.2.0
      - Qt abstraction used by Orange.
@@ -84,8 +91,15 @@ Dependencies
      - 1.8.0
      - ``Network`` type produced by **Variable Dependency Graph**.
 
-Orange3 itself is intentionally left out of the requirements list — the
-host application provides it.
+Orange3 is listed explicitly so a clean ``pip install`` gets a version
+the add-on is tested with. Inside an existing Orange installation that
+already meets the minimum, pip leaves it untouched.
+
+The CI workflow (``.github/workflows/ci.yml``) runs the test suite on
+Python 3.10 with Orange3 3.36.2 and on Python 3.11 and 3.12 with the
+latest releases, builds the package and installs the wheel into an
+empty environment, and builds this documentation with warnings as
+errors.
 
 Running tests
 -------------
