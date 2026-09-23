@@ -10,11 +10,14 @@ Unreleased
 - *Fix (Time Features Constructor):* columns whose names contain punctuation other than spaces or hyphens (``a.b``, ``temp (C)``) or start with a digit (``1abc``) can be referenced by their sanitised name (``a_b``, ``temp__C_``, ``_1abc``), as the documentation already stated. Previously they raised ``NameError``.
 - *Fix (Time Features Constructor):* expressions that reference no column (constants such as ``42``, and invalid expressions that the widget blanks out) yield one value per row instead of failing with *could not broadcast input array*.
 - *Fix (Variable Dependency Graph):* variable names are sanitised with the constructor's ``sanitized_name``, so references to columns with punctuation or a leading digit now produce edges. Node names for those columns change accordingly (``temp (C)`` → ``temp__C_``).
+- *Fix (Save to DB):* **Overwrite** no longer drops the existing table before uploading. The data goes into a staging table that replaces the target only once every chunk is in (atomic ``RENAME TABLE`` on MySQL). Previously, on MySQL, a failed or cancelled Overwrite lost the original table because DDL auto-commits. The same staging path means a failed or cancelled **Create** (or **Append** into a missing table) no longer leaves a half-written table behind, and **Create** now also refuses a table that exists without a ``datasets`` row.
+- *Tests (Save to DB):* the upload worker is tested end to end on SQLite and, when ``TIMEFEATURES_TEST_POSTGRES_URL`` / ``TIMEFEATURES_TEST_MYSQL_URL`` point to disposable databases, on real PostgreSQL and MySQL servers, including failures and cancellations mid-upload.
 
 **Documentation**
 
 - The README and the constructor page no longer describe the restricted ``eval`` as a secure sandbox; they warn to open workflows only from trusted sources.
 - Removed the completion-email references from the README, the index and the Save to DB page: notifications are currently disabled.
+- Rebuilt the bundled in-app help (``timefeatures/help_html``) so the Orange Help window shows the updated pages.
 
 2.2.0 — 2026-06-09
 -------------------
@@ -29,7 +32,7 @@ Unreleased
 2.1.1
 -------------------
 
-**Load from DB (new widget)**s
+**Load from DB (new widget)**
 
 - Lists every dataset registered in the ``datasets`` metadata table
   via SQLAlchemy and pulls the selected one back into Orange as an

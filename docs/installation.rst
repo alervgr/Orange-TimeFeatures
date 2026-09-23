@@ -101,3 +101,12 @@ The test suite uses ``unittest`` and lives under
 The widget-level tests inherit from ``Orange.widgets.tests.base.WidgetTest``
 and therefore require Qt; a virtual display (``Xvfb``) is enough on a
 headless CI worker.
+
+The Save to DB upload tests always run on SQLite. To also run them
+against real servers, point these variables to **disposable** databases
+(the tests create and drop tables there):
+
+.. code-block:: bash
+
+   export TIMEFEATURES_TEST_POSTGRES_URL=postgresql://user:pass@localhost:5432/timefeatures_test
+   export TIMEFEATURES_TEST_MYSQL_URL=mysql://user:pass@127.0.0.1:3306/timefeatures_test
