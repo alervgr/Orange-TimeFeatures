@@ -2,7 +2,8 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/TimeFeatures)](https://pypi.org/project/TimeFeatures/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![CI](https://github.com/alervgr/Orange-TimeFeatures/actions/workflows/ci.yml/badge.svg)](https://github.com/alervgr/Orange-TimeFeatures/actions/workflows/ci.yml)
 [![Orange3](https://img.shields.io/badge/Orange3-add--on-orange)](https://orangedatamining.com/)
 
 TimeFeatures is an add-on for [Orange] 3 data mining software for generating synthetic data using datasets with time series, generating graphs of relationships between the generated variables, and includes widgets to save and load data and configuration tables from a database.
@@ -13,7 +14,7 @@ TimeFeatures is an add-on for [Orange] 3 data mining software for generating syn
 
 - 🕐 **7 time-window functions** — `shift`, `sum`, `mean`, `min`, `max`, `count`, `sd` with full chunk-boundary correctness
 - 🔗 **Chained descriptors** — derived variables can reference each other; topological sort resolves the evaluation order automatically
-- 🛡️ **Secure evaluation** — expressions run in a restricted `eval` sandbox (`__builtins__` replaced, curated whitelist only)
+- 🧮 **Python-style expressions** — evaluated with a restricted `eval` (`__builtins__` replaced, curated whitelist only). This is **not** a security sandbox: expressions can still run arbitrary code, so only open workflows from sources you trust
 - 🗄️ **PostgreSQL & MySQL** — persist and reload datasets via SQLAlchemy with dialect-agnostic SQL generation
 - 📊 **Directed weighted dependency graphs** — edge weights reflect temporal window size; visualise in Network Explorer
 - ⚡ **Bulk upload performance** — pandas `DataFrame.to_sql` with chunked multi-row INSERTs
@@ -25,7 +26,7 @@ TimeFeatures is an add-on for [Orange] 3 data mining software for generating syn
 |---|---|
 | **Time Features Constructor** | Defines new variables from existing ones using Python-style expressions and time-window functions. Supports chained descriptors with automatic topological sorting. |
 | **Variable Dependency Graph** | Builds a directed, weighted dependency graph from the variable definitions. Edge weights summarise how far back or forward in time each variable looks. |
-| **Save to DB** | Persists the resulting dataset to a SQL database (PostgreSQL or MySQL), with full SQL-injection defences, three write modes (create / overwrite / append) and an optional completion email. |
+| **Save to DB** | Persists the resulting dataset to a SQL database (PostgreSQL or MySQL), with full SQL-injection defences and three write modes (create / overwrite / append). |
 | **Load from DB** | Lists datasets previously stored by Save to DB and pulls the chosen one back into Orange, optionally marking the class column directly so no Select Columns widget is needed. |
 
 ## Installation
@@ -52,8 +53,9 @@ If using Anaconda Python distribution, simply run
 
     pip install TimeFeatures
 
-**Required Dependencies**:
+**Required Dependencies** (Python 3.10 or newer):
 
+* Orange3>=3.36.2
 * numpy>=1.22.4
 * AnyQt>=0.2.0
 * PyQt5>=5.15.6

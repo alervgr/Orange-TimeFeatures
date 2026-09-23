@@ -1,0 +1,185 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  QT_QPA_PLATFORM: offscreen
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  tests:
+    name: Tests (Python ${{ matrix.python-version }}, ${{ matrix.label }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Oldest supported Orange3 on the oldest supported Python: keep
+          # in sync with python_requires and the Orange3 floor in setup.py.
+          - python-version: "3.10"
+            label: Orange3 3.36.2
+            pin: Orange3==3.36.2
+          - python-version: "3.11"
+            label: latest
+            pin: ""
+          - python-version: "3.12"
+            label: latest
+            pin: ""
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: timefeatures
+          POSTGRES_PASSWORD: timefeatures
+          POSTGRES_DB: timefeatures_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U timefeatures -d timefeatures_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: timefeatures_test
+          MYSQL_USER: timefeatures
+          MYSQL_PASSWORD: timefeatures
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval 5s --health-timeout 5s --health-retries 30
+    env:
+      # The Save to DB upload tests also run against these real servers.
+      TIMEFEATURES_TEST_POSTGRES_URL: postgresql://timefeatures:timefeatures@localhost:5432/timefeatures_test
+      TIMEFEATURES_TEST_MYSQL_URL: mysql://timefeatures:timefeatures@127.0.0.1:3306/timefeatures_test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: setup.py
+      - name: Install Qt system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libglib2.0-0 libxkbcommon0 libdbus-1-3 libfontconfig1
+      - name: Install TimeFeatures from a clean checkout
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . ${{ matrix.pin }}
+      - name: Show versions
+        run: python -c "import sys, Orange; print('Python', sys.version.split()[0], '| Orange3', Orange.__version__)"
+      - name: Run tests
+        run: python -m unittest discover -v -s timefeatures/widgets/tests -t .
+
+  package:
+    name: Package and clean install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install Qt system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libglib2.0-0 libxkbcommon0 libdbus-1-3 libfontconfig1
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+          twine check dist/*
+      - name: Install the wheel into an empty virtual environment
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install dist/*.whl
+      - name: Check the installed add-on
+        # Run outside the checkout so the installed package is imported.
+        working-directory: /tmp
+        run: /tmp/clean/bin/python "$GITHUB_WORKSPACE/.github/scripts/check_install.py"
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Build the Sphinx docs (warnings are errors)
+        run: |
+          python -m pip install -r docs/requirements.txt
+          python -m sphinx -W --keep-going -b html docs "$RUNNER_TEMP/html"
+
+  # --- Release: after a merge to main, publish the version in
+  # timefeatures/__version__.py if PyPI does not have it yet. ---------------
+  version:
+    name: Check version on PyPI
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [tests, package, docs]
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      publish: ${{ steps.check.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: check
+        run: |
+          version=$(python3 -c 'exec(open("timefeatures/__version__.py").read()); print(__version__)')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          status=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/TimeFeatures/$version/json")
+          case "$status" in
+            200) echo "publish=false" >> "$GITHUB_OUTPUT"
+                 echo "::notice::TimeFeatures $version is already on PyPI; nothing to publish." ;;
+            404) echo "publish=true" >> "$GITHUB_OUTPUT"
+                 echo "::notice::TimeFeatures $version is not on PyPI yet; it will be published." ;;
+            *)   echo "::error::Unexpected answer from PyPI (HTTP $status)"; exit 1 ;;
+          esac
+
+  publish:
+    name: Publish to PyPI
+    needs: version
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    # Must match the environment configured in PyPI's trusted publisher.
+    # Required reviewers on this GitHub environment turn every release
+    # into a manual approval.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/TimeFeatures/${{ needs.version.outputs.version }}/
+    permissions:
+      contents: write  # tag + GitHub release
+      id-token: write  # PyPI trusted publishing, no API token needed
+    concurrency:
+      group: pypi-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Two quick merges with the same version must not fail the second.
+          skip-existing: true
+      - name: Tag and create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release view "v$VERSION" >/dev/null 2>&1 ||
+            gh release create "v$VERSION" dist/* \
+              --target "$GITHUB_SHA" --title "v$VERSION" --generate-notes

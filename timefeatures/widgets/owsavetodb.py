@@ -2,6 +2,7 @@ import re
 import smtplib
 import ssl
 import time
+import uuid
 from contextlib import contextmanager
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
@@ -9,7 +10,7 @@ from email.mime.text import MIMEText
 
 import Orange
 import Orange.data.pandas_compat as pc
-from AnyQt.QtCore import QObject, QThread, Qt, pyqtSignal
+from AnyQt.QtCore import QObject, Qt, pyqtSignal
 from AnyQt.QtWidgets import QComboBox
 from Orange.data import Table
 from Orange.data.sql.backend import Backend
@@ -26,6 +27,8 @@ from PyQt5.QtWidgets import (
 )
 from orangewidget.utils.signals import Input
 
+from timefeatures.widgets._threads import abandon, start_worker
+
 MAX_DL_LIMIT = 1000000
 PANDAS_SQL_CHUNKSIZE = 1000
 CONNECTION_STATUS_STYLES = {
@@ -38,7 +41,7 @@ CONNECTION_STATUS_STYLES = {
 # persisted key, the second is the user-facing label.
 _WRITE_MODES = (
     ("create", "Create new (fail if table exists)"),
-    ("overwrite", "Overwrite (drop and recreate)"),
+    ("overwrite", "Overwrite (replace existing table)"),
     ("append", "Append (keep existing rows)"),
 )
 _WRITE_MODE_KEYS = tuple(key for key, _ in _WRITE_MODES)
@@ -48,12 +51,10 @@ def _pandas_if_exists(write_mode, chunk_index):
     """Map ``(write_mode, chunk_index)`` to the ``if_exists`` value that
     ``DataFrame.to_sql`` expects for that specific chunk.
 
-    - **create**: the first chunk must fail if the table already exists
-      so the user notices the collision; the rest append to the freshly
-      created table.
-    - **overwrite**: we drop the existing table before uploading, so the
-      first chunk creates a fresh one (``if_exists='fail'``); subsequent
-      chunks append.
+    - **create** / **overwrite**: the chunks go into a freshly named
+      staging table (see ``_UploadWorker.run``), so the first chunk
+      creates it (``if_exists='fail'`` guards against a name clash) and
+      the rest append.
     - **append**: every chunk uses ``'append'`` — pandas creates the
       table on the first call if it doesn't exist yet.
     """
@@ -178,6 +179,40 @@ def _create_master_table_sql(dialect):
     """
 
 
+STAGING_TABLE_PREFIX = "_tf_staging_"
+
+
+def _staging_table_name():
+    # Unique per upload so two uploads never share a staging table; short
+    # enough (28 chars, 32 with the "_old" suffix used by MySQL) to fit
+    # both dialects' identifier limits.
+    return f"{STAGING_TABLE_PREFIX}{uuid.uuid4().hex[:16]}"
+
+
+def _table_exists(connection, table_name):
+    from sqlalchemy import inspect
+    # A fresh Inspector each call: its reflection cache would otherwise
+    # keep answering with the state seen before the upload.
+    return inspect(connection).has_table(table_name)
+
+
+def _drop_table_quietly(engine, dialect, table_name):
+    """Best-effort ``DROP TABLE IF EXISTS`` after a failed upload.
+
+    On PostgreSQL the rollback has already removed the staging table. On
+    MySQL its ``CREATE TABLE`` was auto-committed, so without this it
+    would linger in the database.
+    """
+    _, _, text, _ = _sqlalchemy_modules()
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(f"DROP TABLE IF EXISTS {dialect.quote_ident(table_name)}")
+            )
+    except Exception:  # pylint: disable=broad-except
+        pass
+
+
 def _insert_metadata_sql(dialect):
     qi = dialect.quote_ident
     return (
@@ -226,6 +261,7 @@ class _UploadWorker(QObject):
     def run(self):
         start_time = time.time()
         engine = None
+        staging_name = None
         qi = self.dialect.quote_ident
         table_name = self.metadata["table_name"]
 
@@ -258,6 +294,7 @@ class _UploadWorker(QObject):
                 self.progress_changed.emit(10)
 
                 # --- Mode-specific preparation -------------------------- #
+                target_exists = _table_exists(connection, table_name)
                 if self.write_mode == "create":
                     # Fail fast if the user already saved a dataset with
                     # this name; otherwise we'd waste time uploading and
@@ -275,20 +312,24 @@ class _UploadWorker(QObject):
                             "exists. Choose 'Overwrite' or 'Append' "
                             "mode, or use a different table name."
                         )
-                elif self.write_mode == "overwrite":
-                    self.status_changed.emit(
-                        f"Dropping existing table {table_name}..."
-                    )
-                    connection.execute(
-                        text(f"DROP TABLE IF EXISTS {qi(table_name)}")
-                    )
-                    connection.execute(
-                        text(
-                            f"DELETE FROM {qi('datasets')} "
-                            f"WHERE {qi('name')} = :name"
-                        ),
-                        {"name": table_name},
-                    )
+                    if target_exists:
+                        raise ValueError(
+                            f"A table named '{table_name}' already exists "
+                            "in the database. Choose 'Overwrite' mode, or "
+                            "use a different table name."
+                        )
+
+                # Create and Overwrite (and Append into a table that does
+                # not exist yet) upload into a staging table that replaces
+                # the target only once every chunk is in. MySQL
+                # auto-commits DDL, so writing straight into the target
+                # could leave it dropped or half-written if the upload
+                # fails or is cancelled.
+                if self.write_mode == "append" and target_exists:
+                    upload_name = table_name
+                else:
+                    staging_name = _staging_table_name()
+                    upload_name = staging_name
                 self.progress_changed.emit(14)
 
                 # --- Data upload ---------------------------------------- #
@@ -299,7 +340,7 @@ class _UploadWorker(QObject):
                         f"Uploading rows {index + 1}/{total_chunks}..."
                     )
                     chunk.to_sql(
-                        table_name,
+                        upload_name,
                         con=connection,
                         if_exists=_pandas_if_exists(self.write_mode, index),
                         index=False,
@@ -310,6 +351,21 @@ class _UploadWorker(QObject):
                         14 + ((index + 1) * 80 / total_chunks)
                     )
 
+                if self.is_cancelled:
+                    raise Exception("Upload cancelled by user.")
+
+                # --- Swap the staging table in -------------------------- #
+                if staging_name is not None:
+                    self.status_changed.emit(f"Replacing table {table_name}...")
+                    for statement in self.dialect.replace_table_sql(
+                        staging_name, table_name,
+                        _table_exists(connection, table_name),
+                    ):
+                        connection.execute(text(statement))
+                    # From here on the staging name no longer exists; a
+                    # later failure must not try to clean it up.
+                    staging_name = None
+
                 # --- Refresh the metadata row to mirror reality --------- #
                 self.status_changed.emit("Updating metadata...")
                 count_row = connection.execute(
@@ -318,8 +374,8 @@ class _UploadWorker(QObject):
                 actual_rows = int(count_row[0]) if count_row else 0
 
                 # DELETE-then-INSERT works uniformly: in overwrite/append
-                # we've either dropped the row already or want to replace
-                # the obsolete count; in create the row never existed.
+                # it replaces the obsolete row; in create the row never
+                # existed.
                 connection.execute(
                     text(
                         f"DELETE FROM {qi('datasets')} "
@@ -345,6 +401,8 @@ class _UploadWorker(QObject):
             self.progress_changed.emit(100)
             self.finished.emit(time_elapsed)
         except Exception as ex:
+            if engine is not None and staging_name is not None:
+                _drop_table_quietly(engine, self.dialect, staging_name)
             self.failed.emit(str(ex))
         finally:
             if engine is not None:
@@ -372,6 +430,17 @@ class _Dialect:
 
     def backend_factory(self):  # pragma: no cover - abstract
         raise NotImplementedError
+
+    def replace_table_sql(self, staging, target, target_exists):
+        """Statements that put the fully uploaded ``staging`` table in
+        place of ``target``. PostgreSQL DDL is transactional, so running
+        them inside the upload transaction makes the swap atomic."""
+        qi = self.quote_ident
+        statements = []
+        if target_exists:
+            statements.append(f"DROP TABLE {qi(target)}")
+        statements.append(f"ALTER TABLE {qi(staging)} RENAME TO {qi(target)}")
+        return statements
 
 
 class _PostgresDialect(_Dialect):
@@ -432,6 +501,20 @@ class _MySQLDialect(_Dialect):
 
     def backend_factory(self):
         return _MySQLBackend
+
+    def replace_table_sql(self, staging, target, target_exists):
+        # MySQL auto-commits every DDL statement, so DROP + RENAME would
+        # leave a moment without the table. A multi-table RENAME TABLE
+        # swaps both names atomically; the old data is dropped afterwards.
+        qi = self.quote_ident
+        if not target_exists:
+            return [f"RENAME TABLE {qi(staging)} TO {qi(target)}"]
+        old = f"{staging}_old"
+        return [
+            f"RENAME TABLE {qi(target)} TO {qi(old)}, "
+            f"{qi(staging)} TO {qi(target)}",
+            f"DROP TABLE {qi(old)}",
+        ]
 
 
 class _MySQLBackend:
@@ -516,7 +599,7 @@ class owsavetodb(OWBaseSql, OWWidget):
     selected_backend = Setting("PostgreSQL")
     sql = Setting("")
     # How to handle an existing table: "create" (default, fail on collision),
-    # "overwrite" (drop and recreate), "append" (keep existing rows).
+    # "overwrite" (replace once uploaded), "append" (keep existing rows).
     write_mode = Setting("create")
 
     class Warning(OWBaseSql.Warning):
@@ -605,7 +688,8 @@ class owsavetodb(OWBaseSql, OWWidget):
         self.modeCombo.setToolTip(
             "How to handle an existing table:\n"
             "  • Create new — fail if a table with the same name exists.\n"
-            "  • Overwrite — drop the existing table and recreate it.\n"
+            "  • Overwrite — replace the existing table once the upload\n"
+            "    completes; if it fails, the old table is kept.\n"
             "  • Append — keep existing rows and append the new ones."
         )
         for key, label in _WRITE_MODES:
@@ -787,8 +871,7 @@ class owsavetodb(OWBaseSql, OWWidget):
         self.progressBarSet(0)
         self._set_connection_status("Starting upload...", "neutral")
 
-        self._upload_thread = QThread(self)
-        self._upload_worker = _UploadWorker(
+        worker = _UploadWorker(
             table=self.data,
             dialect=self.dialect,
             connection_params=connection_params,
@@ -796,18 +879,14 @@ class owsavetodb(OWBaseSql, OWWidget):
             email_params=email_params,
             write_mode=self.write_mode,
         )
-        self._upload_worker.moveToThread(self._upload_thread)
-        self._upload_thread.started.connect(self._upload_worker.run)
-        self._upload_worker.progress_changed.connect(self.progressBarSet)
-        self._upload_worker.status_changed.connect(self._on_upload_status)
-        self._upload_worker.finished.connect(self._on_upload_finished)
-        self._upload_worker.failed.connect(self._on_upload_failed)
-        self._upload_worker.finished.connect(lambda _: self._upload_thread.quit())
-        self._upload_worker.failed.connect(lambda _: self._upload_thread.quit())
-        self._upload_thread.finished.connect(self._upload_worker.deleteLater)
-        self._upload_thread.finished.connect(self._upload_thread.deleteLater)
-        self._upload_thread.finished.connect(self._on_upload_thread_finished)
-        self._upload_thread.start()
+        worker.progress_changed.connect(self.progressBarSet)
+        worker.status_changed.connect(self._on_upload_status)
+        worker.finished.connect(self._on_upload_finished)
+        worker.failed.connect(self._on_upload_failed)
+        self._upload_worker = worker
+        self._upload_thread = start_worker(
+            worker, self._on_upload_thread_released
+        )
 
     def cancelUpload(self):
         if self._upload_worker is not None:
@@ -836,9 +915,10 @@ class owsavetodb(OWBaseSql, OWWidget):
         self.Error.connection(message)
         self._set_connection_status(f"Upload failed: {message}", "error")
 
-    def _on_upload_thread_finished(self):
-        self._upload_thread = None
-        self._upload_worker = None
+    def _on_upload_thread_released(self, thread):
+        if thread is self._upload_thread:
+            self._upload_thread = None
+            self._upload_worker = None
 
     def _set_upload_controls_enabled(self, enabled):
         for widget in (
@@ -853,9 +933,13 @@ class owsavetodb(OWBaseSql, OWWidget):
             self.btn_cancel.setEnabled(not enabled)
 
     def onDeleteWidget(self):
-        if self._upload_thread is not None and self._upload_thread.isRunning():
-            self._upload_thread.quit()
-            self._upload_thread.wait()
+        # Waiting for the upload here would freeze the canvas until it
+        # ends. Cancel it instead (the transaction and staging table make
+        # that safe) and let its thread end on its own.
+        if self._upload_thread is not None:
+            abandon(self._upload_thread)
+            self._upload_thread = None
+            self._upload_worker = None
         super().onDeleteWidget()
 
     def highlight_error(self, text=""):

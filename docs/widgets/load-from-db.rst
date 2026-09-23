@@ -90,22 +90,28 @@ then spawns a background ``QThread`` that runs a
 ``_ListDatasetsWorker``. The worker queries the ``datasets`` metadata
 table via SQLAlchemy and emits the result back to the GUI thread.
 
-Selecting a dataset triggers a tiny ``SELECT * FROM <name> LIMIT 0``
-to fetch the column list — this is cheap enough to run synchronously
-because the server only returns the column header.
+Selecting a dataset runs ``SELECT * FROM <name> LIMIT 50`` to fill the
+preview and the column list. This small query still runs on the GUI
+thread, so on a slow connection the widget pauses briefly.
 
-When **Load** is clicked, a ``_LoadTableWorker`` runs
-``pandas.read_sql("SELECT * FROM <name>", engine)`` on a background
-thread, returning a DataFrame that the GUI thread converts into an
-``Orange.data.Table`` with
-``Orange.data.pandas_compat.table_from_frame``. If the user picked a
-class column, the helper ``_build_domain_with_class`` rebuilds the
+When **Load** is clicked, a ``_LoadTableWorker`` reads the table on a
+background thread in 1 000-row chunks through a server-side cursor
+(``stream_results``), so the progress bar follows the rows as they
+arrive and **Cancel** stops the load within one chunk. The resulting
+DataFrame is converted in the GUI thread into an ``Orange.data.Table``
+with ``Orange.data.pandas_compat.table_from_frame``. If the user picked
+a class column, the helper ``_build_domain_with_class`` rebuilds the
 domain so that column becomes ``domain.class_var`` and the rest of the
 columns stay in ``domain.attributes``.
 
 While any worker runs, the form controls (database type, connection
 fields, **Connect**, **Load**, dataset and class combos) are
 temporarily disabled and the status label keeps the user informed.
+Each operation keeps its own thread, so an operation started from the
+end of another (the auto-load right after the listing, or the listing
+right after a delete) is never cut short or left uncancellable.
+Removing the widget or closing the workflow during a load cancels it
+instead of freezing the canvas until the query ends.
 
 Auto-load
 ---------

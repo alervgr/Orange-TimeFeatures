@@ -22,8 +22,7 @@ built on top of an existing dataset.
        how far back or forward in time each variable looks.
    * - :doc:`widgets/save-to-db`
      - Persists the resulting dataset to a SQL database (PostgreSQL
-       or MySQL), with full SQL-injection defences and an optional
-       completion email.
+       or MySQL), with full SQL-injection defences.
    * - :doc:`widgets/load-from-db`
      - Lists the datasets previously stored by Save to DB and pulls
        the chosen one back into Orange, optionally marking the class

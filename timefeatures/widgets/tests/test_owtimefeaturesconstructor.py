@@ -81,6 +81,16 @@ class TestModificarExpression(unittest.TestCase):
         self.assertEqual(modificar_expression("shift(x,+5)"), "shift0(x,+5)")
         self.assertEqual(modificar_expression("sum(x,-5,+5)"), "sum0(x,-5,+5)")
 
+    def test_whitespace_between_arguments(self):
+        self.assertEqual(modificar_expression("shift(x, -1)"), "shift0(x, -1)")
+        self.assertEqual(
+            modificar_expression("mean( x , -2 , 0 )"), "mean0( x , -2 , 0 )"
+        )
+
+    def test_does_not_match_inside_longer_names(self):
+        # ``min(`` no debe reconocerse dentro de ``nanmin(``.
+        self.assertEqual(modificar_expression("nanmin(x,1,2)"), "nanmin(x,1,2)")
+
 
 # --------------------------------------------------------------------- #
 #  Funciones de ventana (puras)
@@ -221,6 +231,9 @@ class TestSanitizedName(unittest.TestCase):
 
     def test_valid_name_unchanged(self):
         self.assertEqual(sanitized_name("variable_1"), "variable_1")
+
+    def test_empty_name(self):
+        self.assertEqual(sanitized_name(""), "")
 
 
 # --------------------------------------------------------------------- #
@@ -366,6 +379,76 @@ class TestFeatureFuncEvalSafety(unittest.TestCase):
         result = func(data)
         self.assertEqual(result[0], 4)  # |1 - 5| = 4
         self.assertEqual(result[1], 3)  # |2 - 5| = 3
+
+
+# --------------------------------------------------------------------- #
+#  FeatureFunc — evaluación de expresiones válidas
+# --------------------------------------------------------------------- #
+class TestFeatureFuncEvaluation(unittest.TestCase):
+    @staticmethod
+    def _eval(expression, columns):
+        """Evalúa ``expression`` sobre una tabla con ``columns``
+        (dict nombre → lista de valores) y devuelve la lista resultante."""
+        domain = Orange.data.Domain(
+            [Orange.data.ContinuousVariable(name) for name in columns]
+        )
+        data = Orange.data.Table.from_numpy(
+            domain, np.array(list(columns.values()), dtype=float).T
+        )
+        desc = ContinuousDescriptor(
+            name="y", expression=expression, meta=False,
+            number_of_decimals=3,
+        )
+        _, func = bind_variable(
+            desc, list(domain.variables), data, use_values=False
+        )
+        return func(data)
+
+    def test_shift_with_spaces(self):
+        cols = {"x": [1, 2, 3, 4]}
+        self.assertEqual(self._eval("shift(x, -1)", cols), [None, 1, 2, 3])
+        self.assertEqual(
+            self._eval("shift(x, -1)", cols), self._eval("shift(x,-1)", cols)
+        )
+
+    def test_window_functions_with_spaces(self):
+        cols = {"x": [1, 2, 3, 4]}
+        self.assertEqual(self._eval("sum(x, -1, 0)", cols), [1, 3, 5, 7])
+        self.assertEqual(
+            self._eval("mean( x , -1 , 0 )", cols), [1, 1.5, 2.5, 3.5]
+        )
+
+    def test_positive_signed_offset(self):
+        self.assertEqual(
+            self._eval("shift(x,+1)", {"x": [1, 2, 3]}), [2, 3, None]
+        )
+
+    def test_nested_in_arithmetic(self):
+        cols = {"x": [1, 2, 3, 4]}
+        self.assertEqual(
+            self._eval("(max(x, -1, 0) - min(x, -1, 0)) * 10", cols),
+            [0, 10, 10, 10],
+        )
+
+    def test_constant_expression_returns_one_value_per_row(self):
+        self.assertEqual(self._eval("42", {"x": [1, 2, 3]}), [42, 42, 42])
+
+    def test_empty_expression_yields_nan_column(self):
+        domain = Orange.data.Domain([Orange.data.ContinuousVariable("x")])
+        data = Orange.data.Table.from_numpy(domain, np.zeros((3, 1)))
+        _, _, out = construct_variables(
+            [ContinuousDescriptor("y", "", 3)], data
+        )
+        self.assertTrue(np.isnan(out.get_column("y")).all())
+
+    def test_column_with_punctuation(self):
+        # ``a.b`` se escribe ``a_b`` en la expresión (sanitized_name).
+        cols = {"a.b": [1, 2, 3]}
+        self.assertEqual(self._eval("a_b + 1", cols), [2, 3, 4])
+        self.assertEqual(self._eval("shift(a_b, -1)", cols), [None, 1, 2])
+
+    def test_column_starting_with_digit(self):
+        self.assertEqual(self._eval("_1abc * 2", {"1abc": [1, 2]}), [2, 4])
 
 
 # --------------------------------------------------------------------- #

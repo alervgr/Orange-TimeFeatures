@@ -7,11 +7,11 @@
 
     <title>Time Features Constructor &#8212; TimeFeatures documentation</title>
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=5ecbeea2" />
-    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=686e5160" />
+    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=b08954a9" />
     <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=f6a572b4" />
-    <script src="../_static/documentation_options.js?v=b21de401"></script>
-    <script src="../_static/doctools.js?v=9bcbadda"></script>
-    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/documentation_options.js?v=c3c8ae58"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Variable Dependency Graph" href="variable-dependency-graph.html" />
@@ -176,9 +176,20 @@ underscore.</p>
 <span class="nb">abs</span><span class="p">(</span><span class="n">velocity</span><span class="p">)</span> <span class="o">+</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">altitude</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>The evaluation environment is locked down: <code class="docutils literal notranslate"><span class="pre">__builtins__</span></code> is replaced
-with an empty dict so dangerous calls like <code class="docutils literal notranslate"><span class="pre">__import__</span></code> or <code class="docutils literal notranslate"><span class="pre">open</span></code>
-fail with <code class="docutils literal notranslate"><span class="pre">NameError</span></code>. Only the names listed below are exposed.</p>
+<p>Spaces around the arguments of the time-window functions are optional:
+<code class="docutils literal notranslate"><span class="pre">shift(age,-20)</span></code> and <code class="docutils literal notranslate"><span class="pre">shift(age,</span> <span class="pre">-20)</span></code> are equivalent. An expression
+that references no column (e.g. <code class="docutils literal notranslate"><span class="pre">42</span></code>) produces that value on every
+row.</p>
+<p><code class="docutils literal notranslate"><span class="pre">__builtins__</span></code> is replaced with an empty dict and only the names
+listed below are exposed, so a direct call like <code class="docutils literal notranslate"><span class="pre">__import__</span></code> or
+<code class="docutils literal notranslate"><span class="pre">open</span></code> fails with <code class="docutils literal notranslate"><span class="pre">NameError</span></code>.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>This restricted <code class="docutils literal notranslate"><span class="pre">eval</span></code> is <strong>not</strong> a security sandbox. Python
+introspection can still escape it and run arbitrary code, and
+expressions stored in a workflow run as soon as the workflow is
+opened. Only open workflows from sources you trust.</p>
+</div>
 <section id="available-names">
 <h3>Available names<a class="headerlink" href="#available-names" title="Link to this heading">¶</a></h3>
 <table class="docutils align-default">
@@ -192,7 +203,7 @@ fail with <code class="docutils literal notranslate"><span class="pre">NameError
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p>Safe builtins</p></td>
+<tr class="row-even"><td><p>Builtins</p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">abs</span></code>, <code class="docutils literal notranslate"><span class="pre">all</span></code>, <code class="docutils literal notranslate"><span class="pre">any</span></code>, <code class="docutils literal notranslate"><span class="pre">bin</span></code>, <code class="docutils literal notranslate"><span class="pre">bool</span></code>, <code class="docutils literal notranslate"><span class="pre">bytearray</span></code>,
 <code class="docutils literal notranslate"><span class="pre">bytes</span></code>, <code class="docutils literal notranslate"><span class="pre">chr</span></code>, <code class="docutils literal notranslate"><span class="pre">complex</span></code>, <code class="docutils literal notranslate"><span class="pre">dict</span></code>, <code class="docutils literal notranslate"><span class="pre">divmod</span></code>,
 <code class="docutils literal notranslate"><span class="pre">enumerate</span></code>, <code class="docutils literal notranslate"><span class="pre">filter</span></code>, <code class="docutils literal notranslate"><span class="pre">float</span></code>, <code class="docutils literal notranslate"><span class="pre">format</span></code>, <code class="docutils literal notranslate"><span class="pre">frozenset</span></code>,

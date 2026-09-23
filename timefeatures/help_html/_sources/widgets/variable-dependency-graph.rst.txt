@@ -52,10 +52,14 @@ The widget processes the input table row by row:
 - A row with a valid expression is treated as a **derived variable**
   (``var_type = Derived``).
 
-For every derived variable, the widget scans its expression for
-references to known variable names. Every reference produces one
-directed edge **source → dependency** (i.e. an edge ``X1 → X2`` means
-"X1's expression references X2").
+For every derived variable, the widget parses its expression and
+collects the known variable names it uses as values. Every reference
+produces one directed edge **source → dependency** (i.e. an edge
+``X1 → X2`` means "X1's expression references X2"). Names inside string
+literals, names bound inside a comprehension or lambda, and the names
+of called functions (``sqrt``, ``shift``…) are not references. If an
+expression cannot be parsed, its variable gets no edges and the widget
+shows a warning naming it.
 
 Edge Weights
 ------------
@@ -71,7 +75,9 @@ For an edge ``Xᵢ → Xⱼ``:
 - If ``Xⱼ`` appears inside one or more **temporal calls** in ``Xᵢ``'s
   expression (``shift``, ``sum``, ``mean``, ``count``, ``min``, ``max``,
   ``sd``), the weight is the **maximum absolute integer argument**
-  across all such calls.
+  across all such calls. A temporal call counts only in the form the
+  Time Features Constructor evaluates: ``shift(var, n)`` or
+  ``f(var, n, m)`` with integer literals.
 - If ``Xⱼ`` only appears outside temporal calls (e.g. ``Xⱼ + 1``), the
   weight defaults to ``1``.
 
@@ -119,7 +125,8 @@ downstream styling:
      - Values
    * - ``var_name``
      - String
-     - Sanitised variable name (spaces and hyphens become ``_``).
+     - Sanitised variable name (every non-alphanumeric character
+       becomes ``_``; a leading digit gets a ``_`` prefix).
    * - ``var_type``
      - Discrete
      - ``Derived`` (has an expression) or ``Original`` (source feature).
@@ -172,8 +179,10 @@ Implementation notes
 
 - Variable name lookup is **O(1)** via a precomputed ``name → index``
   map, so the full graph build is linear in the number of references.
-- The detection regex uses word boundaries (``\b``), so ``X1`` will not
-  match inside ``X10``.
-- Sanitisation maps spaces and hyphens to underscores so the names line
-  up with how the **Time Features Constructor** rewrites them inside
-  expressions.
+- References and temporal calls are read from the expression's syntax
+  tree (``ast``), reusing the constructor's ``freevars``, so ``X1``
+  never matches inside ``X10`` or inside a string.
+- Sanitisation reuses the **Time Features Constructor**'s
+  ``sanitized_name`` (plus NFKC normalisation, as Python applies to
+  identifiers) so the names line up with how they are written inside
+  expressions (``temp (C)`` → ``temp__C_``, ``1abc`` → ``_1abc``).

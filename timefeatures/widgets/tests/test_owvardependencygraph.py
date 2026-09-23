@@ -40,7 +40,12 @@ class TestSanitizeName(unittest.TestCase):
         self.assertEqual(_sanitize_name("X_1"), "X_1")
 
     def test_coerces_non_string(self):
-        self.assertEqual(_sanitize_name(42), "42")
+        # Igual que en el constructor: un nombre que empieza por dígito se
+        # escribe con ``_`` delante en las expresiones.
+        self.assertEqual(_sanitize_name(42), "_42")
+
+    def test_matches_constructor_for_punctuation(self):
+        self.assertEqual(_sanitize_name("temp (C)"), "temp__C_")
 
 
 class TestExpressionOrNone(unittest.TestCase):
@@ -138,6 +143,20 @@ class TestBuildDependencyNetwork(unittest.TestCase):
         self.assertEqual(self._names(net), ["var_one", "var_two"])
         self.assertEqual(self._edges(net), {(0, 1)})
 
+    def test_variable_name_with_punctuation_or_leading_digit(self):
+        # Mismo saneado que el constructor: cualquier carácter no
+        # alfanumérico pasa a "_" y un dígito inicial recibe "_" delante.
+        table = make_config([
+            ("X1", "shift(temp__C_, -3) + _1abc"),
+            ("temp (C)", None),
+            ("1abc", None),
+        ])
+        net = build_dependency_network(table)
+        self.assertEqual(self._names(net), ["X1", "temp__C_", "_1abc"])
+        self.assertEqual(
+            self._weighted_edges(net), {(0, 1): 3.0, (0, 2): 1.0}
+        )
+
     def test_no_dependencies(self):
         # Variables sin expresión → todas originales, cero aristas.
         table = make_config([
@@ -147,6 +166,51 @@ class TestBuildDependencyNetwork(unittest.TestCase):
         net = build_dependency_network(table)
         self.assertEqual(self._types(net), [1, 1])
         self.assertEqual(self._edges(net), set())
+
+    def test_names_inside_string_literals_are_not_references(self):
+        table = make_config([
+            ("X1", 'str(X2) + "X3"'),
+            ("X2", None),
+            ("X3", None),
+        ])
+        self.assertEqual(self._edges(build_dependency_network(table)), {(0, 1)})
+
+    def test_called_functions_are_not_references(self):
+        # Una columna llamada "sum" no depende de cada uso de sum(...).
+        table = make_config([
+            ("X1", "sum(X2, -1, 1)"),
+            ("sum", None),
+            ("X2", None),
+        ])
+        self.assertEqual(self._edges(build_dependency_network(table)), {(0, 2)})
+
+    def test_names_bound_in_comprehensions_are_not_references(self):
+        table = make_config([
+            ("X1", "len([X3 for X3 in range(int(X2))])"),
+            ("X2", None),
+            ("X3", None),
+        ])
+        self.assertEqual(self._edges(build_dependency_network(table)), {(0, 1)})
+
+    def test_unicode_names_are_normalised_like_python(self):
+        # Python normaliza los identificadores con NFKC al analizar la
+        # expresión: la ligadura "ﬁ" se lee como "fi".
+        table = make_config([
+            ("X1", "ﬁx + 1"),
+            ("ﬁx", None),
+        ])
+        self.assertEqual(self._edges(build_dependency_network(table)), {(0, 1)})
+
+    def test_unparsable_expression_has_no_edges_and_is_reported(self):
+        table = make_config([
+            ("X1", "X2 +"),
+            ("X2", None),
+            ("X3", "X2 * 2"),
+        ])
+        unparsable = []
+        net = build_dependency_network(table, unparsable)
+        self.assertEqual(self._edges(net), {(2, 1)})
+        self.assertEqual(unparsable, ["X1"])
 
     def test_dependency_to_unknown_variable_is_ignored(self):
         # "foo" no es ninguna variable de la tabla → no se crea arista.
@@ -190,6 +254,28 @@ class TestTemporalWeights(unittest.TestCase):
             _temporal_weights("shift(X,-5) + Y"),
             {"X": 5},
         )
+
+    def test_spaces_and_nesting(self):
+        self.assertEqual(
+            _temporal_weights("abs(mean( X , -3 , 3 )) + shift(Y, -4)"),
+            {"X": 3, "Y": 4},
+        )
+
+    def test_ignores_calls_inside_string_literals(self):
+        self.assertEqual(
+            _temporal_weights('shift(X,-2) + len("shift(X,-50)")'),
+            {"X": 2},
+        )
+
+    def test_ignores_calls_with_another_shape(self):
+        # Sólo cuentan las formas que evalúa el constructor: shift con un
+        # desplazamiento, el resto con dos, y siempre enteros literales.
+        self.assertEqual(_temporal_weights("shift(X, -1, 2)"), {})
+        self.assertEqual(_temporal_weights("sum(X, -3)"), {})
+        self.assertEqual(_temporal_weights("mean(X, -3, k)"), {})
+
+    def test_unparsable_expression_has_no_weights(self):
+        self.assertEqual(_temporal_weights("shift(X, -3"), {})
 
 
 # --------------------------------------------------------------------- #
@@ -341,6 +427,17 @@ class TestNoDerivedWarning(unittest.TestCase):
             table = make_config([("X1", "X2 + 1"), ("X2", None)])
             harness.send_signal(widget.Inputs.data, table)
             self.assertFalse(widget.Warning.no_derived.is_shown())
+            self.assertFalse(widget.Warning.unparsable.is_shown())
+        finally:
+            harness.tearDownClass()
+
+    def test_warns_about_unparsable_expressions(self):
+        harness, widget = self._make_widget()
+        try:
+            table = make_config([("X1", "X2 +"), ("X2", None)])
+            harness.send_signal(widget.Inputs.data, table)
+            self.assertTrue(widget.Warning.unparsable.is_shown())
+            self.assertIn("X1", str(widget.Warning.unparsable))
         finally:
             harness.tearDownClass()
 
