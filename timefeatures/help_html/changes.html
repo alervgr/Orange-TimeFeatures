@@ -7,11 +7,11 @@
 
     <title>Changelog &#8212; TimeFeatures documentation</title>
     <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
-    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=686e5160" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=b08954a9" />
     <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=f6a572b4" />
     <script src="_static/documentation_options.js?v=b21de401"></script>
-    <script src="_static/doctools.js?v=9bcbadda"></script>
-    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="prev" title="Load from DB" href="widgets/load-from-db.html" />
@@ -94,6 +94,24 @@
             
   <section id="changelog">
 <h1>Changelog<a class="headerlink" href="#changelog" title="Link to this heading">¶</a></h1>
+<section id="unreleased">
+<h2>Unreleased<a class="headerlink" href="#unreleased" title="Link to this heading">¶</a></h2>
+<p><strong>Fixes</strong></p>
+<ul class="simple">
+<li><p><em>Fix (Time Features Constructor):</em> time-window functions accept spaces between arguments (<code class="docutils literal notranslate"><span class="pre">shift(x,</span> <span class="pre">-1)</span></code>, <code class="docutils literal notranslate"><span class="pre">mean(x,</span> <span class="pre">-2,</span> <span class="pre">0)</span></code>) and a leading <code class="docutils literal notranslate"><span class="pre">+</span></code> on offsets (<code class="docutils literal notranslate"><span class="pre">shift(x,+1)</span></code>). Previously these raised <code class="docutils literal notranslate"><span class="pre">NameError</span></code> or <code class="docutils literal notranslate"><span class="pre">TypeError</span></code>. <code class="docutils literal notranslate"><span class="pre">min(</span></code>, <code class="docutils literal notranslate"><span class="pre">max(</span></code>, <code class="docutils literal notranslate"><span class="pre">mean(</span></code> and <code class="docutils literal notranslate"><span class="pre">sum(</span></code> are no longer matched inside longer names such as <code class="docutils literal notranslate"><span class="pre">nanmin(</span></code>.</p></li>
+<li><p><em>Fix (Time Features Constructor):</em> columns whose names contain punctuation other than spaces or hyphens (<code class="docutils literal notranslate"><span class="pre">a.b</span></code>, <code class="docutils literal notranslate"><span class="pre">temp</span> <span class="pre">(C)</span></code>) or start with a digit (<code class="docutils literal notranslate"><span class="pre">1abc</span></code>) can be referenced by their sanitised name (<code class="docutils literal notranslate"><span class="pre">a_b</span></code>, <code class="docutils literal notranslate"><span class="pre">temp__C_</span></code>, <code class="docutils literal notranslate"><span class="pre">_1abc</span></code>), as the documentation already stated. Previously they raised <code class="docutils literal notranslate"><span class="pre">NameError</span></code>.</p></li>
+<li><p><em>Fix (Time Features Constructor):</em> expressions that reference no column (constants such as <code class="docutils literal notranslate"><span class="pre">42</span></code>, and invalid expressions that the widget blanks out) yield one value per row instead of failing with <em>could not broadcast input array</em>.</p></li>
+<li><p><em>Fix (Variable Dependency Graph):</em> variable names are sanitised with the constructor’s <code class="docutils literal notranslate"><span class="pre">sanitized_name</span></code>, so references to columns with punctuation or a leading digit now produce edges. Node names for those columns change accordingly (<code class="docutils literal notranslate"><span class="pre">temp</span> <span class="pre">(C)</span></code> → <code class="docutils literal notranslate"><span class="pre">temp__C_</span></code>).</p></li>
+<li><p><em>Fix (Save to DB):</em> <strong>Overwrite</strong> no longer drops the existing table before uploading. The data goes into a staging table that replaces the target only once every chunk is in (atomic <code class="docutils literal notranslate"><span class="pre">RENAME</span> <span class="pre">TABLE</span></code> on MySQL). Previously, on MySQL, a failed or cancelled Overwrite lost the original table because DDL auto-commits. The same staging path means a failed or cancelled <strong>Create</strong> (or <strong>Append</strong> into a missing table) no longer leaves a half-written table behind, and <strong>Create</strong> now also refuses a table that exists without a <code class="docutils literal notranslate"><span class="pre">datasets</span></code> row.</p></li>
+<li><p><em>Tests (Save to DB):</em> the upload worker is tested end to end on SQLite and, when <code class="docutils literal notranslate"><span class="pre">TIMEFEATURES_TEST_POSTGRES_URL</span></code> / <code class="docutils literal notranslate"><span class="pre">TIMEFEATURES_TEST_MYSQL_URL</span></code> point to disposable databases, on real PostgreSQL and MySQL servers, including failures and cancellations mid-upload.</p></li>
+</ul>
+<p><strong>Documentation</strong></p>
+<ul class="simple">
+<li><p>The README and the constructor page no longer describe the restricted <code class="docutils literal notranslate"><span class="pre">eval</span></code> as a secure sandbox; they warn to open workflows only from trusted sources.</p></li>
+<li><p>Removed the completion-email references from the README, the index and the Save to DB page: notifications are currently disabled.</p></li>
+<li><p>Rebuilt the bundled in-app help (<code class="docutils literal notranslate"><span class="pre">timefeatures/help_html</span></code>) so the Orange Help window shows the updated pages.</p></li>
+</ul>
+</section>
 <section id="id1">
 <h2>2.2.0 — 2026-06-09<a class="headerlink" href="#id1" title="Link to this heading">¶</a></h2>
 <p><strong>UX &amp; UI Improvements</strong></p>
@@ -105,7 +123,7 @@
 </ul>
 </section>
 <section id="id2">
-<h2>2.1.1 — 2026-06-09<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h2>
+<h2>2.1.1<a class="headerlink" href="#id2" title="Link to this heading">¶</a></h2>
 <p><strong>Load from DB (new widget)</strong></p>
 <ul class="simple">
 <li><p>Lists every dataset registered in the <code class="docutils literal notranslate"><span class="pre">datasets</span></code> metadata table

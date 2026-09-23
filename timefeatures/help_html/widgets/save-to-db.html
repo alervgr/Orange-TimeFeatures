@@ -7,11 +7,11 @@
 
     <title>Save to DB &#8212; TimeFeatures documentation</title>
     <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=5ecbeea2" />
-    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=686e5160" />
+    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=b08954a9" />
     <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=f6a572b4" />
     <script src="../_static/documentation_options.js?v=b21de401"></script>
-    <script src="../_static/doctools.js?v=9bcbadda"></script>
-    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Load from DB" href="load-from-db.html" />
@@ -165,15 +165,17 @@ rules (see <em>Validation</em> below); MySQL accepts a superset, so
 the same rule is safe on both.</p></td>
 </tr>
 <tr class="row-odd"><td><p>Mode</p></td>
-<td><p>Combo between the Table name and the Email fields:</p>
+<td><p>Combo below the Table name field:</p>
 <ul class="simple">
 <li><p><strong>Create new (fail if table exists)</strong> — default, refuses to
 touch an existing table or metadata row. Use this for first
 uploads or when you want a clear error on accidental name
 collisions.</p></li>
-<li><p><strong>Overwrite (drop and recreate)</strong> — drops the existing data
-table and the matching <code class="docutils literal notranslate"><span class="pre">datasets</span></code> row before uploading,
-then recreates them. Re-running the workflow stops breaking.</p></li>
+<li><p><strong>Overwrite (replace existing table)</strong> — uploads the new data
+and only then replaces the existing table and its
+<code class="docutils literal notranslate"><span class="pre">datasets</span></code> row. If the upload fails or is cancelled, the
+previous table is kept. Re-running the workflow stops
+breaking.</p></li>
 <li><p><strong>Append (keep existing rows)</strong> — adds rows to the existing
 table (creating it if it doesn’t exist). After the upload,
 the widget runs <code class="docutils literal notranslate"><span class="pre">SELECT</span> <span class="pre">COUNT(*)</span></code> and rewrites the
@@ -182,20 +184,19 @@ registry stays accurate across repeated appends.</p></li>
 </ul>
 </td>
 </tr>
-<tr class="row-even"><td><p>Email</p></td>
-<td><p>Optional notification address. A summary email is sent once the
-upload finishes, including the table name, row / column counts,
-and elapsed time.</p></td>
-</tr>
 </tbody>
 </table>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Completion-email notifications are currently disabled; the Email
+field is hidden until they are re-enabled.</p>
+</div>
 </section>
 <section id="how-it-works">
 <h2>How it Works<a class="headerlink" href="#how-it-works" title="Link to this heading">¶</a></h2>
 <p>When <strong>Save</strong> is clicked, the widget:</p>
 <ol class="arabic simple">
-<li><p>Validates the table name and the form (host, database, optional
-email).</p></li>
+<li><p>Validates the table name and the form (host, database).</p></li>
 <li><p>Builds a SQLAlchemy URL from the form fields and the active dialect
 driver (<code class="docutils literal notranslate"><span class="pre">postgresql+psycopg2://…</span></code> or <code class="docutils literal notranslate"><span class="pre">mysql+pymysql://…</span></code>).</p></li>
 <li><p>Spawns a background <code class="docutils literal notranslate"><span class="pre">QThread</span></code> running an <code class="docutils literal notranslate"><span class="pre">_UploadWorker</span></code>, so the
@@ -207,20 +208,16 @@ Orange canvas stays responsive even during long uploads.</p></li>
 and reorders the columns (class first, then metas in domain
 order, then attributes) to match the existing schema convention;</p></li>
 <li><p>ensures the <code class="docutils literal notranslate"><span class="pre">datasets</span></code> metadata table exists;</p></li>
-<li><p>applies the mode-specific preparation:</p>
-<ul>
-<li><p><strong>create</strong> — fail fast if a <code class="docutils literal notranslate"><span class="pre">datasets</span></code> row with this name
-already exists.</p></li>
-<li><p><strong>overwrite</strong> — <code class="docutils literal notranslate"><span class="pre">DROP</span> <span class="pre">TABLE</span> <span class="pre">IF</span> <span class="pre">EXISTS</span></code> on the target plus
-<code class="docutils literal notranslate"><span class="pre">DELETE</span></code> of the matching <code class="docutils literal notranslate"><span class="pre">datasets</span></code> row.</p></li>
-<li><p><strong>append</strong> — leave everything in place; the upload itself will
-create the table on the first chunk if it doesn’t exist.</p></li>
-</ul>
-</li>
+<li><p>applies the mode-specific checks: <strong>create</strong> fails fast if a
+<code class="docutils literal notranslate"><span class="pre">datasets</span></code> row or a table with this name already exists;
+<strong>overwrite</strong> and <strong>append</strong> leave everything in place;</p></li>
 <li><p>writes the dataset in <code class="docutils literal notranslate"><span class="pre">PANDAS_SQL_CHUNKSIZE</span></code> chunks (default
-<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">000</span></code>) via <code class="docutils literal notranslate"><span class="pre">df.to_sql(...,</span> <span class="pre">method='multi')</span></code> with the
-<code class="docutils literal notranslate"><span class="pre">if_exists</span></code> value tailored to the mode (see
-<code class="docutils literal notranslate"><span class="pre">_pandas_if_exists</span></code> for the exact table);</p></li>
+<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">000</span></code>) via <code class="docutils literal notranslate"><span class="pre">df.to_sql(...,</span> <span class="pre">method='multi')</span></code>. <strong>Append</strong> into
+an existing table writes straight into it. Every other case writes
+into a uniquely named staging table (<code class="docutils literal notranslate"><span class="pre">_tf_staging_…</span></code>);</p></li>
+<li><p>once every chunk is in, swaps the staging table in place of the
+target: <code class="docutils literal notranslate"><span class="pre">DROP</span> <span class="pre">TABLE</span></code> + <code class="docutils literal notranslate"><span class="pre">ALTER</span> <span class="pre">TABLE</span> <span class="pre">…</span> <span class="pre">RENAME</span></code> on PostgreSQL, a
+single multi-table <code class="docutils literal notranslate"><span class="pre">RENAME</span> <span class="pre">TABLE</span></code> on MySQL;</p></li>
 <li><p>runs <code class="docutils literal notranslate"><span class="pre">SELECT</span> <span class="pre">COUNT(*)</span></code> on the target table and re-inserts the
 <code class="docutils literal notranslate"><span class="pre">datasets</span></code> row with that real row count, so the registry stays
 consistent even after multiple appends.</p></li>
@@ -228,11 +225,19 @@ consistent even after multiple appends.</p></li>
 </li>
 </ol>
 <p>Everything happens inside a single SQLAlchemy transaction
-(<code class="docutils literal notranslate"><span class="pre">engine.begin()</span></code>), so a mid-upload error rolls every step back on
-PostgreSQL. MySQL auto-commits DDL (<code class="docutils literal notranslate"><span class="pre">DROP</span> <span class="pre">TABLE</span></code>, <code class="docutils literal notranslate"><span class="pre">CREATE</span> <span class="pre">TABLE</span></code>),
-so an Overwrite that crashes during the upload may leave you without
-the original table — there’s no way around that without engine-level
-support.</p>
+(<code class="docutils literal notranslate"><span class="pre">engine.begin()</span></code>). On PostgreSQL, DDL is transactional, so a
+mid-upload error or a <strong>Cancel</strong> rolls every step back. MySQL
+auto-commits DDL (<code class="docutils literal notranslate"><span class="pre">CREATE</span> <span class="pre">TABLE</span></code>, <code class="docutils literal notranslate"><span class="pre">RENAME</span> <span class="pre">TABLE</span></code>), which is why the
+upload goes through a staging table: until the final swap the target
+table is untouched, and on failure the widget drops the staging table
+again. Appended rows are ordinary <code class="docutils literal notranslate"><span class="pre">INSERT</span></code> statements and are rolled
+back on both engines.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If Orange is killed in the middle of an upload to MySQL, the staging
+table cannot be cleaned up and stays behind as <code class="docutils literal notranslate"><span class="pre">_tf_staging_…</span></code>. It
+never appears in <strong>Load from DB</strong> and can be dropped by hand.</p>
+</div>
 <p>While the worker runs, the widget’s progress bar and status label are
 updated through Qt signals; the <strong>Save</strong>, <strong>Connect</strong> and form controls
 are temporarily disabled.</p>
@@ -286,7 +291,6 @@ if you click <strong>Save</strong> before connecting, the widget refuses with
 starts with a letter or underscore, only letters / digits /
 underscores, max 63 characters). MySQL accepts a superset.</p></li>
 <li><p><strong>Connection fields present</strong> — host and database.</p></li>
-<li><p><strong>Email well-formed</strong> — only when the optional field is filled.</p></li>
 </ul>
 </section>
 <section id="security">
@@ -315,7 +319,6 @@ to DB</strong>.</p></li>
 <li><p>Click <strong>Connect</strong>. The status label should turn green with the
 connection details.</p></li>
 <li><p>Enter a valid table name, e.g. <code class="docutils literal notranslate"><span class="pre">my_time_series_data</span></code>.</p></li>
-<li><p><em>(Optional)</em> Enter an email for the completion notification.</p></li>
 <li><p>Click <strong>Save</strong>. Watch the progress bar advance through the chunks
 and the status label switch to <em>Upload completed in Xs</em> when done.</p></li>
 </ol>
