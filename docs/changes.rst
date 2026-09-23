@@ -1,6 +1,21 @@
 Changelog
 =========
 
+Unreleased
+----------
+
+**Fixes**
+
+- *Fix (Time Features Constructor):* time-window functions accept spaces between arguments (``shift(x, -1)``, ``mean(x, -2, 0)``) and a leading ``+`` on offsets (``shift(x,+1)``). Previously these raised ``NameError`` or ``TypeError``. ``min(``, ``max(``, ``mean(`` and ``sum(`` are no longer matched inside longer names such as ``nanmin(``.
+- *Fix (Time Features Constructor):* columns whose names contain punctuation other than spaces or hyphens (``a.b``, ``temp (C)``) or start with a digit (``1abc``) can be referenced by their sanitised name (``a_b``, ``temp__C_``, ``_1abc``), as the documentation already stated. Previously they raised ``NameError``.
+- *Fix (Time Features Constructor):* expressions that reference no column (constants such as ``42``, and invalid expressions that the widget blanks out) yield one value per row instead of failing with *could not broadcast input array*.
+- *Fix (Variable Dependency Graph):* variable names are sanitised with the constructor's ``sanitized_name``, so references to columns with punctuation or a leading digit now produce edges. Node names for those columns change accordingly (``temp (C)`` → ``temp__C_``).
+
+**Documentation**
+
+- The README and the constructor page no longer describe the restricted ``eval`` as a secure sandbox; they warn to open workflows only from trusted sources.
+- Removed the completion-email references from the README, the index and the Save to DB page: notifications are currently disabled.
+
 2.2.0 — 2026-06-09
 -------------------
 

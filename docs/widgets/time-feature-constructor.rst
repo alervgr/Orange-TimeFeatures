@@ -74,9 +74,21 @@ underscore.
    mean(temperature, -2, 2)
    abs(velocity) + sqrt(altitude)
 
-The evaluation environment is locked down: ``__builtins__`` is replaced
-with an empty dict so dangerous calls like ``__import__`` or ``open``
-fail with ``NameError``. Only the names listed below are exposed.
+Spaces around the arguments of the time-window functions are optional:
+``shift(age,-20)`` and ``shift(age, -20)`` are equivalent. An expression
+that references no column (e.g. ``42``) produces that value on every
+row.
+
+``__builtins__`` is replaced with an empty dict and only the names
+listed below are exposed, so a direct call like ``__import__`` or
+``open`` fails with ``NameError``.
+
+.. warning::
+
+   This restricted ``eval`` is **not** a security sandbox. Python
+   introspection can still escape it and run arbitrary code, and
+   expressions stored in a workflow run as soon as the workflow is
+   opened. Only open workflows from sources you trust.
 
 Available names
 ~~~~~~~~~~~~~~~
@@ -87,7 +99,7 @@ Available names
 
    * - Group
      - Names
-   * - Safe builtins
+   * - Builtins
      - ``abs``, ``all``, ``any``, ``bin``, ``bool``, ``bytearray``,
        ``bytes``, ``chr``, ``complex``, ``dict``, ``divmod``,
        ``enumerate``, ``filter``, ``float``, ``format``, ``frozenset``,

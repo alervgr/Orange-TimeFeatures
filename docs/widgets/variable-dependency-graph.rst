@@ -119,7 +119,8 @@ downstream styling:
      - Values
    * - ``var_name``
      - String
-     - Sanitised variable name (spaces and hyphens become ``_``).
+     - Sanitised variable name (every non-alphanumeric character
+       becomes ``_``; a leading digit gets a ``_`` prefix).
    * - ``var_type``
      - Discrete
      - ``Derived`` (has an expression) or ``Original`` (source feature).
@@ -174,6 +175,7 @@ Implementation notes
   map, so the full graph build is linear in the number of references.
 - The detection regex uses word boundaries (``\b``), so ``X1`` will not
   match inside ``X10``.
-- Sanitisation maps spaces and hyphens to underscores so the names line
-  up with how the **Time Features Constructor** rewrites them inside
-  expressions.
+- Sanitisation reuses the **Time Features Constructor**'s
+  ``sanitized_name`` so the names line up with how they are written
+  inside expressions (``temp (C)`` → ``temp__C_``, ``1abc`` →
+  ``_1abc``).

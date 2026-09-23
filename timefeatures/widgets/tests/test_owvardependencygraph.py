@@ -40,7 +40,12 @@ class TestSanitizeName(unittest.TestCase):
         self.assertEqual(_sanitize_name("X_1"), "X_1")
 
     def test_coerces_non_string(self):
-        self.assertEqual(_sanitize_name(42), "42")
+        # Igual que en el constructor: un nombre que empieza por dígito se
+        # escribe con ``_`` delante en las expresiones.
+        self.assertEqual(_sanitize_name(42), "_42")
+
+    def test_matches_constructor_for_punctuation(self):
+        self.assertEqual(_sanitize_name("temp (C)"), "temp__C_")
 
 
 class TestExpressionOrNone(unittest.TestCase):
@@ -137,6 +142,20 @@ class TestBuildDependencyNetwork(unittest.TestCase):
         net = build_dependency_network(table)
         self.assertEqual(self._names(net), ["var_one", "var_two"])
         self.assertEqual(self._edges(net), {(0, 1)})
+
+    def test_variable_name_with_punctuation_or_leading_digit(self):
+        # Mismo saneado que el constructor: cualquier carácter no
+        # alfanumérico pasa a "_" y un dígito inicial recibe "_" delante.
+        table = make_config([
+            ("X1", "shift(temp__C_, -3) + _1abc"),
+            ("temp (C)", None),
+            ("1abc", None),
+        ])
+        net = build_dependency_network(table)
+        self.assertEqual(self._names(net), ["X1", "temp__C_", "_1abc"])
+        self.assertEqual(
+            self._weighted_edges(net), {(0, 1): 3.0, (0, 2): 1.0}
+        )
 
     def test_no_dependencies(self):
         # Variables sin expresión → todas originales, cero aristas.

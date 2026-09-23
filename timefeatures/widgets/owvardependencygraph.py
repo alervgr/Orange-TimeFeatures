@@ -21,10 +21,8 @@ from PyQt5.QtWidgets import QPushButton, QVBoxLayout, QHBoxLayout
 from orangecontrib.network import Network
 from orangecontrib.network.network.base import DirectedEdges
 
+from timefeatures.widgets.owtimefeaturesconstructor import sanitized_name
 
-# Sanitización idéntica a la del Time Features Constructor para que los
-# nombres encajen con los que aparecen escritos en las expresiones.
-_NAME_FIX_RE = re.compile(r'[ \-]')
 
 # Captura una llamada a función temporal (shift/sum/mean/count/min/max/sd),
 # extrae la variable referenciada como primer argumento y el resto de
@@ -39,7 +37,9 @@ _INT_RE = re.compile(r'[-+]?\d+')
 
 
 def _sanitize_name(value):
-    return _NAME_FIX_RE.sub('_', str(value))
+    # La misma función que usa el Time Features Constructor para que los
+    # nombres encajen con los que aparecen escritos en las expresiones.
+    return sanitized_name(str(value))
 
 
 def _expression_or_none(value):

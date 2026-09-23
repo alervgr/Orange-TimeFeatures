@@ -65,7 +65,7 @@ TimeFeatures-specific controls:
        rules (see *Validation* below); MySQL accepts a superset, so
        the same rule is safe on both.
    * - Mode
-     - Combo between the Table name and the Email fields:
+     - Combo below the Table name field:
 
        - **Create new (fail if table exists)** — default, refuses to
          touch an existing table or metadata row. Use this for first
@@ -79,18 +79,18 @@ TimeFeatures-specific controls:
          the widget runs ``SELECT COUNT(*)`` and rewrites the
          ``datasets`` row with the *actual* total row count, so the
          registry stays accurate across repeated appends.
-   * - Email
-     - Optional notification address. A summary email is sent once the
-       upload finishes, including the table name, row / column counts,
-       and elapsed time.
+
+.. note::
+
+   Completion-email notifications are currently disabled; the Email
+   field is hidden until they are re-enabled.
 
 How it Works
 ------------
 
 When **Save** is clicked, the widget:
 
-1. Validates the table name and the form (host, database, optional
-   email).
+1. Validates the table name and the form (host, database).
 2. Builds a SQLAlchemy URL from the form fields and the active dialect
    driver (``postgresql+psycopg2://…`` or ``mysql+pymysql://…``).
 3. Spawns a background ``QThread`` running an ``_UploadWorker``, so the
@@ -175,7 +175,6 @@ Before touching the database the widget enforces:
   starts with a letter or underscore, only letters / digits /
   underscores, max 63 characters). MySQL accepts a superset.
 - **Connection fields present** — host and database.
-- **Email well-formed** — only when the optional field is filled.
 
 Security
 --------
@@ -203,8 +202,7 @@ Usage Example
 4. Click **Connect**. The status label should turn green with the
    connection details.
 5. Enter a valid table name, e.g. ``my_time_series_data``.
-6. *(Optional)* Enter an email for the completion notification.
-7. Click **Save**. Watch the progress bar advance through the chunks
+6. Click **Save**. Watch the progress bar advance through the chunks
    and the status label switch to *Upload completed in Xs* when done.
 
 Requirements
